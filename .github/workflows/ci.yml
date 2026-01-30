@@ -109,7 +109,7 @@ jobs:
         run: cargo build --release
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: agent-linux
           path: agent/target/release/autostrike-agent
@@ -135,7 +135,7 @@ jobs:
         run: cargo build --release
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: agent-windows
           path: agent/target/release/autostrike-agent.exe

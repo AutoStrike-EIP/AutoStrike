@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
+	// Register SQLite3 driver for database/sql
 	_ "github.com/mattn/go-sqlite3"
 )
 

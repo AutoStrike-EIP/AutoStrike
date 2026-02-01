@@ -86,7 +86,7 @@ export default function Techniques() {
                   <span
                     className={`badge ${tacticColors[technique.tactic] || 'bg-gray-100 text-gray-700'}`}
                   >
-                    {technique.tactic.replace(/_/g, ' ')}
+                    {String(technique.tactic).replaceAll('_', ' ')}
                   </span>
                 </td>
                 <td className="px-6 py-4">

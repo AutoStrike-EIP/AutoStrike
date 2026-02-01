@@ -11,7 +11,7 @@ import {
 import clsx from 'clsx';
 
 interface LayoutProps {
-  children: ReactNode;
+  readonly children: ReactNode;
 }
 
 const navigation = [

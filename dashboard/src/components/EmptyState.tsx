@@ -5,18 +5,18 @@ import { ReactNode, ComponentType } from 'react';
  */
 interface EmptyStateProps {
   /** Icon component to display (from @heroicons/react) */
-  icon: ComponentType<{ className?: string }>;
+  readonly icon: ComponentType<{ className?: string }>;
   /** Main title text */
-  title: string;
+  readonly title: string;
   /** Subtitle/description text */
-  description: string;
+  readonly description: string;
   /** Optional action button */
-  action?: {
-    label: string;
-    onClick: () => void;
+  readonly action?: {
+    readonly label: string;
+    readonly onClick: () => void;
   };
   /** Optional custom className for the container */
-  className?: string;
+  readonly className?: string;
 }
 
 /**

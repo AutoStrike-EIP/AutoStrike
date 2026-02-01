@@ -5,9 +5,9 @@ import { ReactNode } from 'react';
  */
 interface LoadingStateProps {
   /** Optional custom loading message */
-  message?: string;
+  readonly message?: string;
   /** Optional custom className for the container */
-  className?: string;
+  readonly className?: string;
 }
 
 /**

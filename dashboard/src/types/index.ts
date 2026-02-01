@@ -23,7 +23,7 @@ export interface Agent {
   /** Available command executors (powershell, cmd, bash, etc.) */
   executors: string[];
   /** Current connection status */
-  status: AgentStatus | string;
+  status: AgentStatus;
   /** ISO timestamp of last heartbeat */
   last_seen: string;
   /** ISO timestamp of agent registration */
@@ -60,7 +60,7 @@ export interface Technique {
   /** Detailed description of the technique */
   description: string;
   /** MITRE tactic this technique belongs to */
-  tactic: TacticType | string;
+  tactic: TacticType;
   /** Supported operating system platforms */
   platforms: string[];
   /** Whether the technique is safe for production testing */
@@ -125,7 +125,7 @@ export interface Execution {
   /** ID of the scenario being executed */
   scenario_id: string;
   /** Current execution status */
-  status: ExecutionStatus | string;
+  status: ExecutionStatus;
   /** ISO timestamp when execution started */
   started_at: string;
   /** ISO timestamp when execution completed */

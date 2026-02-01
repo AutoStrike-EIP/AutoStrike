@@ -121,7 +121,7 @@ func TestAttackOrchestrator_PlanExecution(t *testing.T) {
 		t.Errorf("PlanExecution returned error: %v", err)
 	}
 	if plan == nil {
-		t.Error("PlanExecution returned nil plan")
+		t.Fatal("PlanExecution returned nil plan")
 	}
 	if len(plan.Tasks) != 1 {
 		t.Errorf("Expected 1 task, got %d", len(plan.Tasks))
@@ -183,6 +183,9 @@ func TestAttackOrchestrator_PlanExecution_SafeMode(t *testing.T) {
 
 	if err != nil {
 		t.Errorf("PlanExecution returned error: %v", err)
+	}
+	if plan == nil {
+		t.Fatal("PlanExecution returned nil plan")
 	}
 	if len(plan.Tasks) != 1 {
 		t.Errorf("Expected 1 task (safe only), got %d", len(plan.Tasks))

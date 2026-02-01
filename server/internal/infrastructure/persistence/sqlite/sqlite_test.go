@@ -94,7 +94,7 @@ func TestAgentRepository_FindByPaw(t *testing.T) {
 		Status:    entity.AgentOnline,
 		LastSeen:  time.Now(),
 		}
-	repo.Create(ctx, agent)
+	_ = repo.Create(ctx, agent)
 
 	found, err := repo.FindByPaw(ctx, "test-paw")
 	if err != nil {
@@ -132,7 +132,7 @@ func TestAgentRepository_Update(t *testing.T) {
 		Status:    entity.AgentOnline,
 		LastSeen:  time.Now(),
 		}
-	repo.Create(ctx, agent)
+	_ = repo.Create(ctx, agent)
 
 	agent.Hostname = "new-host"
 	err := repo.Update(ctx, agent)
@@ -161,7 +161,7 @@ func TestAgentRepository_Delete(t *testing.T) {
 		Status:    entity.AgentOnline,
 		LastSeen:  time.Now(),
 		}
-	repo.Create(ctx, agent)
+	_ = repo.Create(ctx, agent)
 
 	err := repo.Delete(ctx, "test-paw")
 	if err != nil {
@@ -190,7 +190,7 @@ func TestAgentRepository_FindAll(t *testing.T) {
 			Status:    entity.AgentOnline,
 			LastSeen:  time.Now(),
 				}
-		repo.Create(ctx, agent)
+	_ = repo.Create(ctx, agent)
 	}
 
 	agents, err := repo.FindAll(ctx)
@@ -218,8 +218,8 @@ func TestAgentRepository_FindByStatus(t *testing.T) {
 		Executors: []string{"sh"}, Status: entity.AgentOffline,
 		LastSeen: time.Now(), CreatedAt: time.Now(),
 	}
-	repo.Create(ctx, online)
-	repo.Create(ctx, offline)
+	_ = repo.Create(ctx, online)
+	_ = repo.Create(ctx, offline)
 
 	agents, err := repo.FindByStatus(ctx, entity.AgentOnline)
 	if err != nil {
@@ -246,8 +246,8 @@ func TestAgentRepository_FindByPlatform(t *testing.T) {
 		Executors: []string{"cmd"}, Status: entity.AgentOnline,
 		LastSeen: time.Now(), CreatedAt: time.Now(),
 	}
-	repo.Create(ctx, linux)
-	repo.Create(ctx, windows)
+	_ = repo.Create(ctx, linux)
+	_ = repo.Create(ctx, windows)
 
 	agents, err := repo.FindByPlatform(ctx, "linux")
 	if err != nil {
@@ -269,7 +269,7 @@ func TestAgentRepository_UpdateLastSeen(t *testing.T) {
 		Executors: []string{"sh"}, Status: entity.AgentOffline,
 		LastSeen: time.Now().Add(-time.Hour), CreatedAt: time.Now(),
 	}
-	repo.Create(ctx, agent)
+	_ = repo.Create(ctx, agent)
 
 	err := repo.UpdateLastSeen(ctx, "test")
 	if err != nil {
@@ -331,7 +331,7 @@ func TestTechniqueRepository_FindByID(t *testing.T) {
 		Executors: []entity.Executor{{Type: "sh", Command: "whoami"}},
 		IsSafe:    true,
 		}
-	repo.Create(ctx, tech)
+	_ = repo.Create(ctx, tech)
 
 	found, err := repo.FindByID(ctx, "T1059")
 	if err != nil {
@@ -368,7 +368,7 @@ func TestTechniqueRepository_Update(t *testing.T) {
 		Executors: []entity.Executor{{Type: "sh", Command: "whoami"}},
 		IsSafe:    true,
 		}
-	repo.Create(ctx, tech)
+	_ = repo.Create(ctx, tech)
 
 	tech.Name = "New Name"
 	err := repo.Update(ctx, tech)
@@ -395,7 +395,7 @@ func TestTechniqueRepository_Delete(t *testing.T) {
 		Platforms: []string{"linux"},
 		Executors: []entity.Executor{{Type: "sh", Command: "whoami"}},
 		}
-	repo.Create(ctx, tech)
+	_ = repo.Create(ctx, tech)
 
 	err := repo.Delete(ctx, "T1059")
 	if err != nil {
@@ -422,7 +422,7 @@ func TestTechniqueRepository_FindAll(t *testing.T) {
 			Platforms: []string{"linux"},
 			Executors: []entity.Executor{{Type: "sh", Command: "cmd"}},
 				}
-		repo.Create(ctx, tech)
+	_ = repo.Create(ctx, tech)
 	}
 
 	techniques, err := repo.FindAll(ctx)
@@ -448,8 +448,8 @@ func TestTechniqueRepository_FindByTactic(t *testing.T) {
 		ID: "T2", Name: "Persist", Tactic: entity.TacticPersistence,
 		Platforms: []string{"linux"}, Executors: []entity.Executor{{Type: "sh", Command: "c"}},
 		}
-	repo.Create(ctx, exec)
-	repo.Create(ctx, persist)
+	_ = repo.Create(ctx, exec)
+	_ = repo.Create(ctx, persist)
 
 	techniques, err := repo.FindByTactic(ctx, entity.TacticExecution)
 	if err != nil {
@@ -474,8 +474,8 @@ func TestTechniqueRepository_FindByPlatform(t *testing.T) {
 		ID: "T2", Name: "Windows", Tactic: entity.TacticExecution,
 		Platforms: []string{"windows"}, Executors: []entity.Executor{{Type: "cmd", Command: "c"}},
 		}
-	repo.Create(ctx, linux)
-	repo.Create(ctx, windows)
+	_ = repo.Create(ctx, linux)
+	_ = repo.Create(ctx, windows)
 
 	techniques, err := repo.FindByPlatform(ctx, "linux")
 	if err != nil {
@@ -535,7 +535,7 @@ func TestScenarioRepository_FindByID(t *testing.T) {
 		Tags:      []string{"test"},
 			UpdatedAt: time.Now(),
 	}
-	repo.Create(ctx, scenario)
+	_ = repo.Create(ctx, scenario)
 
 	found, err := repo.FindByID(ctx, "s1")
 	if err != nil {
@@ -571,7 +571,7 @@ func TestScenarioRepository_Update(t *testing.T) {
 		Tags:      []string{},
 			UpdatedAt: time.Now(),
 	}
-	repo.Create(ctx, scenario)
+	_ = repo.Create(ctx, scenario)
 
 	scenario.Name = "New Name"
 	err := repo.Update(ctx, scenario)
@@ -598,7 +598,7 @@ func TestScenarioRepository_Delete(t *testing.T) {
 		Tags:      []string{},
 			UpdatedAt: time.Now(),
 	}
-	repo.Create(ctx, scenario)
+	_ = repo.Create(ctx, scenario)
 
 	err := repo.Delete(ctx, "s1")
 	if err != nil {
@@ -625,7 +625,7 @@ func TestScenarioRepository_FindAll(t *testing.T) {
 			Tags:      []string{},
 					UpdatedAt: time.Now(),
 		}
-		repo.Create(ctx, scenario)
+	_ = repo.Create(ctx, scenario)
 	}
 
 	scenarios, err := repo.FindAll(ctx)
@@ -657,8 +657,8 @@ func TestScenarioRepository_FindByTag(t *testing.T) {
 		Tags:      []string{"other"},
 			UpdatedAt: time.Now(),
 	}
-	repo.Create(ctx, tagged)
-	repo.Create(ctx, untagged)
+	_ = repo.Create(ctx, tagged)
+	_ = repo.Create(ctx, untagged)
 
 	scenarios, err := repo.FindByTag(ctx, "important")
 	if err != nil {
@@ -712,7 +712,7 @@ func TestResultRepository_FindExecutionByID(t *testing.T) {
 		Status:     entity.ExecutionRunning,
 		StartedAt:  time.Now(),
 	}
-	repo.CreateExecution(ctx, exec)
+	_ = repo.CreateExecution(ctx, exec)
 
 	found, err := repo.FindExecutionByID(ctx, "e1")
 	if err != nil {
@@ -747,7 +747,7 @@ func TestResultRepository_UpdateExecution(t *testing.T) {
 		Status:     entity.ExecutionRunning,
 		StartedAt:  time.Now(),
 	}
-	repo.CreateExecution(ctx, exec)
+	_ = repo.CreateExecution(ctx, exec)
 
 	now := time.Now()
 	exec.Status = entity.ExecutionCompleted
@@ -778,7 +778,7 @@ func TestResultRepository_FindExecutionsByScenario(t *testing.T) {
 			Status:     entity.ExecutionCompleted,
 			StartedAt:  time.Now(),
 		}
-		repo.CreateExecution(ctx, exec)
+	_ = repo.CreateExecution(ctx, exec)
 	}
 	exec3 := &entity.Execution{
 		ID:         "e3",
@@ -786,7 +786,7 @@ func TestResultRepository_FindExecutionsByScenario(t *testing.T) {
 		Status:     entity.ExecutionCompleted,
 		StartedAt:  time.Now(),
 	}
-	repo.CreateExecution(ctx, exec3)
+	_ = repo.CreateExecution(ctx, exec3)
 
 	executions, err := repo.FindExecutionsByScenario(ctx, "s1")
 	if err != nil {
@@ -810,7 +810,7 @@ func TestResultRepository_FindRecentExecutions(t *testing.T) {
 			Status:     entity.ExecutionCompleted,
 			StartedAt:  time.Now(),
 		}
-		repo.CreateExecution(ctx, exec)
+	_ = repo.CreateExecution(ctx, exec)
 	}
 
 	executions, err := repo.FindRecentExecutions(ctx, 3)
@@ -857,7 +857,7 @@ func TestResultRepository_UpdateResult(t *testing.T) {
 		Status:      entity.StatusPending,
 		StartedAt:   time.Now(),
 	}
-	repo.CreateResult(ctx, result)
+	_ = repo.CreateResult(ctx, result)
 
 	now := time.Now()
 	result.Status = entity.StatusSuccess
@@ -885,7 +885,7 @@ func TestResultRepository_FindResultsByExecution(t *testing.T) {
 			Status:      entity.StatusSuccess,
 			StartedAt:   time.Now(),
 		}
-		repo.CreateResult(ctx, result)
+	_ = repo.CreateResult(ctx, result)
 	}
 
 	results, err := repo.FindResultsByExecution(ctx, "e1")
@@ -911,8 +911,8 @@ func TestResultRepository_FindResultsByTechnique(t *testing.T) {
 		ID: "r2", ExecutionID: "e1", TechniqueID: "T1055",
 		AgentPaw: "paw1", Status: entity.StatusSuccess, StartedAt: time.Now(),
 	}
-	repo.CreateResult(ctx, r1)
-	repo.CreateResult(ctx, r2)
+	_ = repo.CreateResult(ctx, r1)
+	_ = repo.CreateResult(ctx, r2)
 
 	results, err := repo.FindResultsByTechnique(ctx, "T1059")
 	if err != nil {

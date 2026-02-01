@@ -1,0 +1,35 @@
+import { ReactNode } from 'react';
+
+/**
+ * Props for the LoadingState component.
+ */
+interface LoadingStateProps {
+  /** Optional custom loading message */
+  message?: string;
+  /** Optional custom className for the container */
+  className?: string;
+}
+
+/**
+ * Reusable loading state component with animation.
+ * Displays a pulsing loading indicator with customizable message.
+ *
+ * @example
+ * ```tsx
+ * if (isLoading) {
+ *   return <LoadingState message="Loading agents..." />;
+ * }
+ * ```
+ */
+export function LoadingState({ message = 'Loading...', className = '' }: LoadingStateProps): ReactNode {
+  return (
+    <div className={`animate-pulse text-gray-500 ${className}`} role="status" aria-live="polite">
+      <div className="flex items-center gap-2">
+        <div className="h-4 w-4 rounded-full bg-gray-300 animate-bounce" />
+        <span>{message}</span>
+      </div>
+    </div>
+  );
+}
+
+export default LoadingState;

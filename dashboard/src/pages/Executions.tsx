@@ -148,6 +148,7 @@ export default function Executions() {
     onError: (error: { response?: { data?: { error?: string }; status?: number } }) => {
       const message = error.response?.data?.error || 'Failed to stop execution';
       toast.error(message);
+      setExecutionToStop(null); // Close modal on error
     },
   });
 

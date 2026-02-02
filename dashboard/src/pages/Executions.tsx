@@ -38,15 +38,15 @@ function canStopExecution(status: ExecutionStatus): boolean {
  * Confirmation Modal component for stopping executions
  */
 interface StopConfirmModalProps {
-  execution: Execution;
-  onConfirm: () => void;
-  onCancel: () => void;
-  isLoading: boolean;
+  readonly execution: Execution;
+  readonly onConfirm: () => void;
+  readonly onCancel: () => void;
+  readonly isLoading: boolean;
 }
 
-function StopConfirmModal({ execution, onConfirm, onCancel, isLoading }: StopConfirmModalProps) {
+function StopConfirmModal({ execution, onConfirm, onCancel, isLoading }: Readonly<StopConfirmModalProps>) {
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <dialog open className="fixed inset-0 z-50 overflow-y-auto bg-transparent" aria-labelledby="modal-title" aria-modal="true">
       <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         {/* Background overlay */}
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={onCancel}></div>
@@ -98,7 +98,7 @@ function StopConfirmModal({ execution, onConfirm, onCancel, isLoading }: StopCon
           </div>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }
 

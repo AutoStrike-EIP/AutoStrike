@@ -40,8 +40,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   const getWebSocketUrl = useCallback(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_WS_HOST || window.location.host;
+    const protocol = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = import.meta.env.VITE_WS_HOST || globalThis.location.host;
     return `${protocol}//${host}/ws/dashboard`;
   }, []);
 

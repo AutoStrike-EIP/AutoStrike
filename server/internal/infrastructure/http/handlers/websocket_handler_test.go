@@ -853,7 +853,9 @@ func TestWebSocketHandler_HandleDashboardMessage_Ping(t *testing.T) {
 	}
 
 	// Read pong response
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("Failed to set read deadline: %v", err)
+	}
 	var response map[string]interface{}
 	if err := conn.ReadJSON(&response); err != nil {
 		t.Fatalf("Failed to read pong response: %v", err)
@@ -903,7 +905,9 @@ func TestWebSocketHandler_DashboardReceivesBroadcast(t *testing.T) {
 	hub.Broadcast(msgBytes)
 
 	// Read broadcast message
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("Failed to set read deadline: %v", err)
+	}
 	var response map[string]interface{}
 	if err := conn.ReadJSON(&response); err != nil {
 		t.Fatalf("Failed to read broadcast: %v", err)

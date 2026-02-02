@@ -27,6 +27,7 @@ func (h *ExecutionHandler) RegisterRoutes(r *gin.RouterGroup) {
 		executions.GET("/:id/results", h.GetResults)
 		executions.POST("", h.StartExecution)
 		executions.POST("/:id/complete", h.CompleteExecution)
+		executions.POST("/:id/stop", h.StopExecution)
 	}
 }
 
@@ -101,4 +102,16 @@ func (h *ExecutionHandler) CompleteExecution(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "completed"})
+}
+
+// StopExecution cancels a running execution
+func (h *ExecutionHandler) StopExecution(c *gin.Context) {
+	id := c.Param("id")
+
+	if err := h.service.CancelExecution(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
 }

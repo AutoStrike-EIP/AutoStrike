@@ -16,6 +16,7 @@ type mockResultRepo struct {
 	err              error
 	createResultErr  error
 	findResultsErr   error
+	updateResultErr  error
 }
 
 func newMockResultRepo() *mockResultRepo {
@@ -91,6 +92,9 @@ func (m *mockResultRepo) CreateResult(ctx context.Context, r *entity.ExecutionRe
 }
 
 func (m *mockResultRepo) UpdateResult(ctx context.Context, r *entity.ExecutionResult) error {
+	if m.updateResultErr != nil {
+		return m.updateResultErr
+	}
 	if m.err != nil {
 		return m.err
 	}
@@ -481,5 +485,127 @@ func TestStartExecutionCreateResultError(t *testing.T) {
 	_, err := svc.StartExecution(context.Background(), "s1", []string{"paw1"}, false)
 	if err == nil {
 		t.Fatal("Expected error for create result failure")
+	}
+}
+
+func TestCancelExecutionSuccess(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:     "e1",
+		Status: entity.ExecutionRunning,
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{
+		{ID: "r1", ExecutionID: "e1", Status: entity.StatusPending},
+		{ID: "r2", ExecutionID: "e1", Status: entity.StatusRunning},
+		{ID: "r3", ExecutionID: "e1", Status: entity.StatusSuccess},
+	}
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.CancelExecution(context.Background(), "e1")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	exec := resultRepo.executions["e1"]
+	if exec.Status != entity.ExecutionCancelled {
+		t.Errorf("Expected status Cancelled, got %v", exec.Status)
+	}
+	if exec.CompletedAt == nil {
+		t.Error("Expected CompletedAt to be set")
+	}
+}
+
+func TestCancelExecutionPending(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:     "e1",
+		Status: entity.ExecutionPending,
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{}
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.CancelExecution(context.Background(), "e1")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	exec := resultRepo.executions["e1"]
+	if exec.Status != entity.ExecutionCancelled {
+		t.Errorf("Expected status Cancelled, got %v", exec.Status)
+	}
+}
+
+func TestCancelExecutionNotFound(t *testing.T) {
+	resultRepo := newMockResultRepo()
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.CancelExecution(context.Background(), "invalid")
+	if err == nil {
+		t.Fatal("Expected error for not found execution")
+	}
+}
+
+func TestCancelExecutionAlreadyCompleted(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	now := time.Now()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:          "e1",
+		Status:      entity.ExecutionCompleted,
+		CompletedAt: &now,
+	}
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.CancelExecution(context.Background(), "e1")
+	if err == nil {
+		t.Fatal("Expected error for already completed execution")
+	}
+}
+
+func TestCancelExecutionAlreadyCancelled(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	now := time.Now()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:          "e1",
+		Status:      entity.ExecutionCancelled,
+		CompletedAt: &now,
+	}
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.CancelExecution(context.Background(), "e1")
+	if err == nil {
+		t.Fatal("Expected error for already cancelled execution")
+	}
+}
+
+func TestCancelExecutionResultsError(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:     "e1",
+		Status: entity.ExecutionRunning,
+	}
+	resultRepo.findResultsErr = errors.New("results error")
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.CancelExecution(context.Background(), "e1")
+	if err == nil {
+		t.Fatal("Expected error for results fetch failure")
+	}
+}
+
+func TestCancelExecutionUpdateResultError(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:     "e1",
+		Status: entity.ExecutionRunning,
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{
+		{ID: "r1", ExecutionID: "e1", Status: entity.StatusPending},
+	}
+	resultRepo.updateResultErr = errors.New("update error")
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.CancelExecution(context.Background(), "e1")
+	if err == nil {
+		t.Fatal("Expected error for update result failure")
 	}
 }

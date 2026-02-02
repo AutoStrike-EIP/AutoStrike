@@ -179,3 +179,39 @@ func (s *ExecutionService) GetExecutionResults(ctx context.Context, executionID 
 func (s *ExecutionService) GetRecentExecutions(ctx context.Context, limit int) ([]*entity.Execution, error) {
 	return s.resultRepo.FindRecentExecutions(ctx, limit)
 }
+
+// CancelExecution stops a running execution
+func (s *ExecutionService) CancelExecution(ctx context.Context, executionID string) error {
+	execution, err := s.resultRepo.FindExecutionByID(ctx, executionID)
+	if err != nil {
+		return fmt.Errorf("execution not found: %w", err)
+	}
+
+	// Only running or pending executions can be cancelled
+	if execution.Status != entity.ExecutionRunning && execution.Status != entity.ExecutionPending {
+		return fmt.Errorf("execution cannot be cancelled: status is %s", execution.Status)
+	}
+
+	// Update all pending results to skipped
+	results, err := s.resultRepo.FindResultsByExecution(ctx, executionID)
+	if err != nil {
+		return fmt.Errorf("failed to get results: %w", err)
+	}
+
+	now := time.Now()
+	for _, result := range results {
+		if result.Status == entity.StatusPending || result.Status == entity.StatusRunning {
+			result.Status = entity.StatusSkipped
+			result.CompletedAt = &now
+			if err := s.resultRepo.UpdateResult(ctx, result); err != nil {
+				return fmt.Errorf("failed to update result %s: %w", result.ID, err)
+			}
+		}
+	}
+
+	// Mark execution as cancelled
+	execution.Status = entity.ExecutionCancelled
+	execution.CompletedAt = &now
+
+	return s.resultRepo.UpdateExecution(ctx, execution)
+}

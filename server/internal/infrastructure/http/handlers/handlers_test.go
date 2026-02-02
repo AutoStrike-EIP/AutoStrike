@@ -658,9 +658,10 @@ func TestTechniqueHandler_ImportTechniques_Error(t *testing.T) {
 
 // Execution mock repos
 type mockResultRepo struct {
-	executions map[string]*entity.Execution
-	results    map[string][]*entity.ExecutionResult
-	err        error
+	executions     map[string]*entity.Execution
+	results        map[string][]*entity.ExecutionResult
+	err            error
+	findResultsErr error
 }
 
 func newMockResultRepo() *mockResultRepo {
@@ -721,6 +722,9 @@ func (m *mockResultRepo) UpdateResult(ctx context.Context, r *entity.ExecutionRe
 	return nil
 }
 func (m *mockResultRepo) FindResultsByExecution(ctx context.Context, executionID string) ([]*entity.ExecutionResult, error) {
+	if m.findResultsErr != nil {
+		return nil, m.findResultsErr
+	}
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -1021,5 +1025,119 @@ func TestStartExecutionRequest_Struct(t *testing.T) {
 	}
 	if !req.SafeMode {
 		t.Error("SafeMode should be true")
+	}
+}
+
+func TestExecutionHandler_StopExecution(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:        "e1",
+		Status:    entity.ExecutionRunning,
+		StartedAt: time.Now(),
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{}
+
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.POST("/executions/:id/stop", handler.StopExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/e1/stop", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestExecutionHandler_StopExecution_NotFound(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.POST("/executions/:id/stop", handler.StopExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/missing/stop", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestExecutionHandler_StopExecution_AlreadyCompleted(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	now := time.Now()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:          "e1",
+		Status:      entity.ExecutionCompleted,
+		StartedAt:   now,
+		CompletedAt: &now,
+	}
+
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.POST("/executions/:id/stop", handler.StopExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/e1/stop", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("Expected status 409, got %d", w.Code)
+	}
+}
+
+func TestExecutionHandler_StopExecution_PendingExecution(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:        "e1",
+		Status:    entity.ExecutionPending,
+		StartedAt: time.Now(),
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{}
+
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.POST("/executions/:id/stop", handler.StopExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/e1/stop", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestExecutionHandler_StopExecution_InternalError(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:        "e1",
+		Status:    entity.ExecutionRunning,
+		StartedAt: time.Now(),
+	}
+	resultRepo.findResultsErr = errors.New("database connection failed")
+
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.POST("/executions/:id/stop", handler.StopExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/e1/stop", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
 	}
 }

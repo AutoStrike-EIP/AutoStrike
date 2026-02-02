@@ -32,6 +32,7 @@ autostrike/
 ├── dashboard/       # React frontend
 │   └── src/
 │       ├── components/
+│       ├── hooks/       # Custom React hooks (useWebSocket)
 │       ├── pages/
 │       └── lib/
 ├── docs/            # MkDocs documentation

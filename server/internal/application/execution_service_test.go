@@ -16,6 +16,7 @@ type mockResultRepo struct {
 	err              error
 	createResultErr  error
 	findResultsErr   error
+	updateResultErr  error
 }
 
 func newMockResultRepo() *mockResultRepo {
@@ -91,6 +92,9 @@ func (m *mockResultRepo) CreateResult(ctx context.Context, r *entity.ExecutionRe
 }
 
 func (m *mockResultRepo) UpdateResult(ctx context.Context, r *entity.ExecutionResult) error {
+	if m.updateResultErr != nil {
+		return m.updateResultErr
+	}
 	if m.err != nil {
 		return m.err
 	}
@@ -585,5 +589,23 @@ func TestCancelExecutionResultsError(t *testing.T) {
 	err := svc.CancelExecution(context.Background(), "e1")
 	if err == nil {
 		t.Fatal("Expected error for results fetch failure")
+	}
+}
+
+func TestCancelExecutionUpdateResultError(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:     "e1",
+		Status: entity.ExecutionRunning,
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{
+		{ID: "r1", ExecutionID: "e1", Status: entity.StatusPending},
+	}
+	resultRepo.updateResultErr = errors.New("update error")
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.CancelExecution(context.Background(), "e1")
+	if err == nil {
+		t.Fatal("Expected error for update result failure")
 	}
 }

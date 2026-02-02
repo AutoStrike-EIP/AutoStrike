@@ -143,7 +143,7 @@ export default function Executions() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['executions'] });
       setExecutionToStop(null);
-      toast.success('Execution stop request sent');
+      // Toast notification handled by WebSocket message handler (execution_cancelled event)
     },
     onError: (error: { response?: { data?: { error?: string }; status?: number } }) => {
       const message = error.response?.data?.error || 'Failed to stop execution';

@@ -1023,3 +1023,93 @@ func TestStartExecutionRequest_Struct(t *testing.T) {
 		t.Error("SafeMode should be true")
 	}
 }
+
+func TestExecutionHandler_StopExecution(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:        "e1",
+		Status:    entity.ExecutionRunning,
+		StartedAt: time.Now(),
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{}
+
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.POST("/executions/:id/stop", handler.StopExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/e1/stop", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestExecutionHandler_StopExecution_NotFound(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.POST("/executions/:id/stop", handler.StopExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/missing/stop", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestExecutionHandler_StopExecution_AlreadyCompleted(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	now := time.Now()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:          "e1",
+		Status:      entity.ExecutionCompleted,
+		StartedAt:   now,
+		CompletedAt: &now,
+	}
+
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.POST("/executions/:id/stop", handler.StopExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/e1/stop", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestExecutionHandler_StopExecution_PendingExecution(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:        "e1",
+		Status:    entity.ExecutionPending,
+		StartedAt: time.Now(),
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{}
+
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.POST("/executions/:id/stop", handler.StopExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/e1/stop", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}

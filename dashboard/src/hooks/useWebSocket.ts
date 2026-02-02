@@ -38,6 +38,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const wsRef = useRef<WebSocket | null>(null);
   const retriesRef = useRef(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const isCleaningUpRef = useRef(false);
 
   const getWebSocketUrl = useCallback(() => {
     const protocol = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -65,6 +66,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       wsRef.current.onclose = () => {
         setIsConnected(false);
         onDisconnect?.();
+
+        // Don't reconnect if we're cleaning up (component unmounting)
+        if (isCleaningUpRef.current) {
+          return;
+        }
 
         // Auto-reconnect with backoff
         if (retriesRef.current < maxRetries) {
@@ -100,9 +106,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   }, []);
 
   useEffect(() => {
+    isCleaningUpRef.current = false;
     connect();
 
     return () => {
+      isCleaningUpRef.current = true;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }

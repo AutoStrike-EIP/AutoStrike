@@ -37,7 +37,7 @@ services:
       - ./dashboard:/app
       - dashboard-node-modules:/app/node_modules
     environment:
-      - VITE_API_BASE_URL=http://localhost:8443/api/v1
+      - VITE_API_BASE_URL=https://localhost:8443/api/v1
       - VITE_WS_HOST=localhost:8443
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     depends_on:

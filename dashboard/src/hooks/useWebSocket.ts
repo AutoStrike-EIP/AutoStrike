@@ -115,7 +115,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         clearTimeout(reconnectTimeoutRef.current);
       }
       if (wsRef.current) {
+        // Null event handlers to prevent memory leaks
+        wsRef.current.onopen = null;
+        wsRef.current.onclose = null;
+        wsRef.current.onerror = null;
+        wsRef.current.onmessage = null;
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
   }, [connect]);

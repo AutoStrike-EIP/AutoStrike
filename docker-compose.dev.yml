@@ -21,7 +21,8 @@ services:
       - autostrike-dev-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8443/health"]
+      # Uses HTTP for internal container health check (server handles both in dev mode)
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "--no-check-certificate", "https://localhost:8443/health"]
       interval: 10s
       timeout: 5s
       retries: 3

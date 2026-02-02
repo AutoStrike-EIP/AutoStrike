@@ -1060,8 +1060,8 @@ func TestExecutionHandler_StopExecution_NotFound(t *testing.T) {
 	req, _ := http.NewRequest("POST", "/executions/missing/stop", nil)
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
 	}
 }
 
@@ -1085,8 +1085,8 @@ func TestExecutionHandler_StopExecution_AlreadyCompleted(t *testing.T) {
 	req, _ := http.NewRequest("POST", "/executions/e1/stop", nil)
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", w.Code)
+	if w.Code != http.StatusConflict {
+		t.Errorf("Expected status 409, got %d", w.Code)
 	}
 }
 

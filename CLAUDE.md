@@ -93,8 +93,12 @@ Base URL: `https://localhost:8443/api/v1`
 | `/agents/:paw` | GET | Get agent details |
 | `/techniques` | GET | List MITRE techniques |
 | `/techniques/tactic/:tactic` | GET | Techniques by tactic |
+| `/executions` | GET | List all executions |
+| `/executions/:id` | GET | Get execution details |
 | `/executions` | POST | Start execution |
 | `/executions/:id/results` | GET | Get execution results |
+| `/executions/:id/stop` | POST | Stop running execution |
+| `/executions/:id/complete` | POST | Mark execution complete |
 
 ## WebSocket Protocol
 
@@ -131,10 +135,10 @@ Agent ↔ Server communication via `wss://server:8443/ws/agent`
 
 ## Testing
 
-Currently minimal test coverage:
-- Server: Integration tests needed
-- Agent: 1 unit test in `executor.rs`
-- Dashboard: No tests yet
+Test coverage:
+- Server: Unit tests for services and handlers (`go test ./...`)
+- Agent: Unit tests in `executor.rs` (`cargo test`)
+- Dashboard: 97 tests (`npm run test`)
 
 ## Contributing
 

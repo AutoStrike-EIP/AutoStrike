@@ -1,0 +1,72 @@
+# Development docker-compose configuration
+# Usage: docker compose -f docker-compose.dev.yml up
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: autostrike-server-dev
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./server/config:/app/config
+      - ./certs:/app/certs
+      - server-data-dev:/app/data
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret-change-in-production}
+      - AGENT_SECRET=${AGENT_SECRET:-dev-agent-secret-change-in-production}
+      - ENABLE_AUTH=false
+      - GIN_MODE=debug
+    networks:
+      - autostrike-dev-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8443/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  dashboard:
+    image: node:20-alpine
+    container_name: autostrike-dashboard-dev
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./dashboard:/app
+      - dashboard-node-modules:/app/node_modules
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8443/api/v1
+      - VITE_WS_HOST=localhost:8443
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - autostrike-dev-net
+    restart: unless-stopped
+
+  # Optional: Local agent for testing
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: autostrike-agent-dev
+    environment:
+      - AUTOSTRIKE_SERVER=ws://server:8443/ws/agent
+      - AUTOSTRIKE_PAW=dev-agent-001
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - autostrike-dev-net
+    profiles:
+      - agent  # Only run with: docker compose -f docker-compose.dev.yml --profile agent up
+
+volumes:
+  server-data-dev:
+  dashboard-node-modules:
+
+networks:
+  autostrike-dev-net:
+    driver: bridge

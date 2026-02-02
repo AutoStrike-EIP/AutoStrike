@@ -307,6 +307,30 @@ POST /api/v1/executions
 POST /api/v1/executions/:id/complete
 ```
 
+### Arrêter une exécution
+
+```http
+POST /api/v1/executions/:id/stop
+```
+
+Arrête une exécution en cours (status `running` ou `pending`).
+
+**Réponse succès (200) :**
+
+```json
+{
+  "status": "cancelled"
+}
+```
+
+**Erreurs possibles :**
+
+| Code | Description |
+|------|-------------|
+| 404 | Exécution non trouvée |
+| 409 | Exécution déjà terminée ou annulée |
+| 500 | Erreur serveur |
+
 ---
 
 ## WebSocket (Agents)
@@ -392,6 +416,7 @@ wss://localhost:8443/ws/agent
 | 401 | Non authentifié |
 | 403 | Accès refusé |
 | 404 | Ressource non trouvée |
+| 409 | Conflit (ex: exécution déjà terminée) |
 | 500 | Erreur serveur |
 
 **Format d'erreur :**

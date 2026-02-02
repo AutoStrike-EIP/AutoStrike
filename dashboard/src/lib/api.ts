@@ -27,3 +27,41 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Execution API methods
+export const executionApi = {
+  /**
+   * List all executions
+   */
+  list: () => api.get('/executions'),
+
+  /**
+   * Get execution by ID
+   */
+  get: (id: string) => api.get(`/executions/${id}`),
+
+  /**
+   * Get execution results
+   */
+  getResults: (id: string) => api.get(`/executions/${id}/results`),
+
+  /**
+   * Start a new execution
+   */
+  start: (scenarioId: string, agentPaws: string[], safeMode: boolean) =>
+    api.post('/executions', {
+      scenario_id: scenarioId,
+      agent_paws: agentPaws,
+      safe_mode: safeMode,
+    }),
+
+  /**
+   * Stop a running execution
+   */
+  stop: (id: string) => api.post(`/executions/${id}/stop`),
+
+  /**
+   * Complete an execution
+   */
+  complete: (id: string) => api.post(`/executions/${id}/complete`),
+};

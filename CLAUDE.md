@@ -147,7 +147,7 @@ Connection: `wss://server:8443/ws/dashboard`
 Test coverage:
 - Server: Unit tests for services and handlers (`go test ./...`)
 - Agent: Unit tests in `executor.rs` (`cargo test`)
-- Dashboard: 108 tests (`npm run test`)
+- Dashboard: 115 tests (`npm run test`)
 
 ## Contributing
 

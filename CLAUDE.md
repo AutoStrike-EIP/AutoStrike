@@ -32,6 +32,7 @@ autostrike/
 ├── dashboard/       # React frontend
 │   └── src/
 │       ├── components/
+│       ├── hooks/       # Custom React hooks (useWebSocket)
 │       ├── pages/
 │       └── lib/
 ├── docs/            # MkDocs documentation
@@ -93,12 +94,17 @@ Base URL: `https://localhost:8443/api/v1`
 | `/agents/:paw` | GET | Get agent details |
 | `/techniques` | GET | List MITRE techniques |
 | `/techniques/tactic/:tactic` | GET | Techniques by tactic |
+| `/executions` | GET | List all executions |
+| `/executions/:id` | GET | Get execution details |
 | `/executions` | POST | Start execution |
 | `/executions/:id/results` | GET | Get execution results |
+| `/executions/:id/stop` | POST | Stop running execution |
+| `/executions/:id/complete` | POST | Mark execution complete |
 
 ## WebSocket Protocol
 
-Agent ↔ Server communication via `wss://server:8443/ws/agent`
+### Agent ↔ Server
+Connection: `wss://server:8443/ws/agent`
 
 ```json
 // Register
@@ -109,6 +115,14 @@ Agent ↔ Server communication via `wss://server:8443/ws/agent`
 
 // Result
 {"type": "task_result", "payload": {"task_id": "...", "success": true, ...}}
+```
+
+### Dashboard ↔ Server
+Connection: `wss://server:8443/ws/dashboard`
+
+```json
+// Server notifications (execution_cancelled, execution_completed, execution_started)
+{"type": "execution_cancelled", "payload": {"execution_id": "...", "data": {}}}
 ```
 
 ## Environment Variables
@@ -131,10 +145,10 @@ Agent ↔ Server communication via `wss://server:8443/ws/agent`
 
 ## Testing
 
-Currently minimal test coverage:
-- Server: Integration tests needed
-- Agent: 1 unit test in `executor.rs`
-- Dashboard: No tests yet
+Test coverage:
+- Server: Unit tests for services and handlers (`go test ./...`)
+- Agent: Unit tests in `executor.rs` (`cargo test`)
+- Dashboard: 115 tests (`npm run test`)
 
 ## Contributing
 

@@ -201,3 +201,16 @@ describe('Response Interceptor Logic', () => {
     expect(localStorage.removeItem).not.toHaveBeenCalled();
   });
 });
+
+describe('executionApi', () => {
+  it('exports executionApi object with all methods', async () => {
+    const { executionApi } = await import('./api');
+    expect(executionApi).toBeDefined();
+    expect(typeof executionApi.list).toBe('function');
+    expect(typeof executionApi.get).toBe('function');
+    expect(typeof executionApi.getResults).toBe('function');
+    expect(typeof executionApi.start).toBe('function');
+    expect(typeof executionApi.stop).toBe('function');
+    expect(typeof executionApi.complete).toBe('function');
+  });
+});

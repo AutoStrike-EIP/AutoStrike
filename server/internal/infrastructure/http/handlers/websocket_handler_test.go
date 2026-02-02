@@ -752,6 +752,278 @@ func TestUpgrader_CheckOrigin_WithWhitespace(t *testing.T) {
 	}
 }
 
+func TestWebSocketHandler_RegisterRoutes_Dashboard(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	// Check that both routes were registered
+	routes := router.Routes()
+	agentFound := false
+	dashboardFound := false
+	for _, route := range routes {
+		if route.Path == "/ws/agent" && route.Method == "GET" {
+			agentFound = true
+		}
+		if route.Path == "/ws/dashboard" && route.Method == "GET" {
+			dashboardFound = true
+		}
+	}
+
+	if !agentFound {
+		t.Error("WebSocket route /ws/agent not registered")
+	}
+	if !dashboardFound {
+		t.Error("WebSocket route /ws/dashboard not registered")
+	}
+}
+
+func TestWebSocketHandler_HandleDashboardConnection(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	go hub.Run()
+
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/ws/dashboard", handler.HandleDashboardConnection)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Convert http:// to ws://
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/dashboard"
+
+	// Connect WebSocket client
+	conn, resp, err := gorillaws.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect WebSocket: %v", err)
+	}
+	defer conn.Close()
+
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Errorf("Expected status 101, got %d", resp.StatusCode)
+	}
+}
+
+func TestWebSocketHandler_HandleDashboardMessage_Ping(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	go hub.Run()
+
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/ws/dashboard", handler.HandleDashboardConnection)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/dashboard"
+
+	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	// Send ping message
+	pingMsg := map[string]interface{}{
+		"type":    "ping",
+		"payload": map[string]interface{}{},
+	}
+
+	if err := conn.WriteJSON(pingMsg); err != nil {
+		t.Fatalf("Failed to send ping: %v", err)
+	}
+
+	// Read pong response
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("Failed to set read deadline: %v", err)
+	}
+	var response map[string]interface{}
+	if err := conn.ReadJSON(&response); err != nil {
+		t.Fatalf("Failed to read pong response: %v", err)
+	}
+
+	if response["type"] != "pong" {
+		t.Errorf("Expected type 'pong', got '%v'", response["type"])
+	}
+}
+
+func TestWebSocketHandler_DashboardReceivesBroadcast(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	go hub.Run()
+
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/ws/dashboard", handler.HandleDashboardConnection)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/dashboard"
+
+	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	// Wait for client to be registered
+	time.Sleep(100 * time.Millisecond)
+
+	// Broadcast a message
+	broadcastMsg := map[string]interface{}{
+		"type": "execution_cancelled",
+		"payload": map[string]interface{}{
+			"execution_id": "test-exec-123",
+		},
+	}
+	msgBytes, _ := json.Marshal(broadcastMsg)
+	hub.Broadcast(msgBytes)
+
+	// Read broadcast message
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("Failed to set read deadline: %v", err)
+	}
+	var response map[string]interface{}
+	if err := conn.ReadJSON(&response); err != nil {
+		t.Fatalf("Failed to read broadcast: %v", err)
+	}
+
+	if response["type"] != "execution_cancelled" {
+		t.Errorf("Expected type 'execution_cancelled', got '%v'", response["type"])
+	}
+}
+
+func TestWebSocketHandler_HandleDashboardMessage_OtherTypes(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	go hub.Run()
+
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/ws/dashboard", handler.HandleDashboardConnection)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/dashboard"
+
+	conn, _, err := gorillaws.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	// Send a non-ping message (should be ignored, not cause error)
+	otherMsg := map[string]interface{}{
+		"type":    "some_other_type",
+		"payload": map[string]interface{}{"data": "test"},
+	}
+
+	if err := conn.WriteJSON(otherMsg); err != nil {
+		t.Fatalf("Failed to send message: %v", err)
+	}
+
+	// Give time for message to be processed
+	time.Sleep(100 * time.Millisecond)
+
+	// Connection should still be alive - send a ping to verify
+	pingMsg := map[string]interface{}{
+		"type":    "ping",
+		"payload": map[string]interface{}{},
+	}
+	if err := conn.WriteJSON(pingMsg); err != nil {
+		t.Fatalf("Connection died after other message: %v", err)
+	}
+
+	// Read pong response to confirm connection is healthy
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("Failed to set read deadline: %v", err)
+	}
+	var response map[string]interface{}
+	if err := conn.ReadJSON(&response); err != nil {
+		t.Fatalf("Failed to read pong response: %v", err)
+	}
+
+	if response["type"] != "pong" {
+		t.Errorf("Expected type 'pong', got '%v'", response["type"])
+	}
+}
+
+func TestWebSocketHandler_HandleAgentConnection_UpgradeFail(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/ws/agent", handler.HandleAgentConnection)
+
+	// Make a regular HTTP request (not a WebSocket upgrade request)
+	// This will cause the upgrade to fail
+	req := httptest.NewRequest("GET", "/ws/agent", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// Should not crash and should return error (bad request or similar)
+	// The upgrade fails silently (logs error and returns)
+	// Status won't be set by gin if upgrade fails early
+}
+
+func TestWebSocketHandler_HandleDashboardConnection_UpgradeFail(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/ws/dashboard", handler.HandleDashboardConnection)
+
+	// Make a regular HTTP request (not a WebSocket upgrade request)
+	req := httptest.NewRequest("GET", "/ws/dashboard", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// Should not crash
+}
+
 func TestWebSocketHandler_FullIntegration(t *testing.T) {
 	logger := zap.NewNop()
 	hub := websocket.NewHub(logger)

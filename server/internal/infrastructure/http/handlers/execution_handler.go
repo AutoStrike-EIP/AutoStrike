@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
 	"autostrike/internal/application"
+	"autostrike/internal/infrastructure/websocket"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,11 +14,39 @@ import (
 // ExecutionHandler handles execution-related HTTP requests
 type ExecutionHandler struct {
 	service *application.ExecutionService
+	hub     *websocket.Hub
 }
 
 // NewExecutionHandler creates a new execution handler
 func NewExecutionHandler(service *application.ExecutionService) *ExecutionHandler {
 	return &ExecutionHandler{service: service}
+}
+
+// NewExecutionHandlerWithHub creates a new execution handler with WebSocket support
+func NewExecutionHandlerWithHub(service *application.ExecutionService, hub *websocket.Hub) *ExecutionHandler {
+	return &ExecutionHandler{service: service, hub: hub}
+}
+
+// broadcastExecutionEvent sends an execution event to all connected clients
+func (h *ExecutionHandler) broadcastExecutionEvent(eventType string, executionID string, data interface{}) {
+	if h.hub == nil {
+		return
+	}
+
+	msg := map[string]interface{}{
+		"type": eventType,
+		"payload": map[string]interface{}{
+			"execution_id": executionID,
+			"data":         data,
+		},
+	}
+
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+
+	h.hub.Broadcast(msgBytes)
 }
 
 // RegisterRoutes registers execution routes
@@ -90,6 +120,9 @@ func (h *ExecutionHandler) StartExecution(c *gin.Context) {
 		return
 	}
 
+	// Broadcast execution started event to all connected clients
+	h.broadcastExecutionEvent("execution_started", execution.ID, execution)
+
 	c.JSON(http.StatusCreated, execution)
 }
 
@@ -101,6 +134,11 @@ func (h *ExecutionHandler) CompleteExecution(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Broadcast execution completed event to all connected clients
+	h.broadcastExecutionEvent("execution_completed", id, map[string]string{
+		"status": "completed",
+	})
 
 	c.JSON(http.StatusOK, gin.H{"status": "completed"})
 }
@@ -123,6 +161,11 @@ func (h *ExecutionHandler) StopExecution(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Broadcast cancellation event to all connected clients
+	h.broadcastExecutionEvent("execution_cancelled", id, map[string]string{
+		"status": "cancelled",
+	})
 
 	c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
 }

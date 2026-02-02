@@ -12,8 +12,11 @@ import (
 
 	"autostrike/internal/application"
 	"autostrike/internal/domain/entity"
+	"autostrike/internal/domain/service"
+	"autostrike/internal/infrastructure/websocket"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 func init() {
@@ -947,6 +950,67 @@ func TestExecutionHandler_StartExecution_ServiceError(t *testing.T) {
 	}
 }
 
+func TestExecutionHandler_StartExecution_Success(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	scenarioRepo := newMockScenarioRepo()
+	scenarioRepo.scenarios["s1"] = &entity.Scenario{
+		ID:   "s1",
+		Name: "Test Scenario",
+		Phases: []entity.Phase{
+			{Name: "Phase1", Techniques: []string{"T1059"}},
+		},
+	}
+	techRepo := newMockTechniqueRepo()
+	techRepo.techniques["T1059"] = &entity.Technique{
+		ID:        "T1059",
+		Platforms: []string{"linux"},
+		Executors: []entity.Executor{{Type: "sh", Command: "echo test"}},
+	}
+	agentRepo := newMockAgentRepo()
+	agentRepo.agents["paw1"] = &entity.Agent{
+		Paw:       "paw1",
+		Status:    entity.AgentOnline,
+		Platform:  "linux",
+		Executors: []string{"sh"},
+		LastSeen:  time.Now(),
+	}
+
+	validator := service.NewTechniqueValidator()
+	orchestrator := service.NewAttackOrchestrator(agentRepo, techRepo, validator, nil)
+	calculator := service.NewScoreCalculator()
+
+	svc := application.NewExecutionService(resultRepo, scenarioRepo, techRepo, agentRepo, orchestrator, calculator)
+
+	// Create handler with hub to test broadcast
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	go hub.Run()
+
+	handler := NewExecutionHandlerWithHub(svc, hub)
+
+	router := gin.New()
+	router.POST("/executions", handler.StartExecution)
+
+	body := StartExecutionRequest{
+		ScenarioID: "s1",
+		AgentPaws:  []string{"paw1"},
+		SafeMode:   false,
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Allow time for broadcast to process
+	time.Sleep(10 * time.Millisecond)
+}
+
 func TestExecutionHandler_CompleteExecution(t *testing.T) {
 	resultRepo := newMockResultRepo()
 	resultRepo.executions["e1"] = &entity.Execution{
@@ -1140,4 +1204,49 @@ func TestExecutionHandler_StopExecution_InternalError(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("Expected status 500, got %d", w.Code)
 	}
+}
+
+func TestNewExecutionHandlerWithHub(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+
+	// Create handler with hub
+	handler := NewExecutionHandlerWithHub(svc, nil)
+	if handler == nil {
+		t.Fatal("Expected non-nil handler")
+	}
+	if handler.service != svc {
+		t.Error("Service not set correctly")
+	}
+}
+
+func TestExecutionHandler_BroadcastExecutionEvent_NilHub(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+
+	// Handler with nil hub should not panic
+	handler := NewExecutionHandler(svc)
+	handler.broadcastExecutionEvent("test_event", "exec-123", map[string]string{"status": "test"})
+	// No panic means success
+}
+
+func TestExecutionHandler_BroadcastExecutionEvent_WithHub(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+
+	// Create a real hub
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+
+	// Start hub in goroutine
+	go hub.Run()
+
+	// Create handler with hub
+	handler := NewExecutionHandlerWithHub(svc, hub)
+
+	// This should not panic and should broadcast
+	handler.broadcastExecutionEvent("test_event", "exec-123", map[string]string{"status": "test"})
+
+	// Small delay to let broadcast process
+	time.Sleep(10 * time.Millisecond)
 }

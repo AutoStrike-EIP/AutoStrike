@@ -100,8 +100,13 @@ func NewServerWithConfig(
 		techniqueHandler := handlers.NewTechniqueHandler(techniqueService)
 		techniqueHandler.RegisterRoutes(api)
 
-		// Executions
-		executionHandler := handlers.NewExecutionHandler(executionService)
+		// Executions (with WebSocket support for real-time notifications)
+		var executionHandler *handlers.ExecutionHandler
+		if hub != nil {
+			executionHandler = handlers.NewExecutionHandlerWithHub(executionService, hub)
+		} else {
+			executionHandler = handlers.NewExecutionHandler(executionService)
+		}
 		executionHandler.RegisterRoutes(api)
 	}
 

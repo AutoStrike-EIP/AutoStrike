@@ -307,6 +307,87 @@ POST /api/v1/executions
 POST /api/v1/executions/:id/complete
 ```
 
+### Arrêter une exécution
+
+```http
+POST /api/v1/executions/:id/stop
+```
+
+Arrête une exécution en cours (status `running` ou `pending`).
+
+**Réponse succès (200) :**
+
+```json
+{
+  "status": "cancelled"
+}
+```
+
+**Erreurs possibles :**
+
+| Code | Description |
+|------|-------------|
+| 404 | Exécution non trouvée |
+| 409 | Exécution déjà terminée ou annulée |
+| 500 | Erreur serveur |
+
+---
+
+## WebSocket (Dashboard)
+
+### Connexion
+
+```
+wss://localhost:8443/ws/dashboard
+```
+
+Le dashboard se connecte pour recevoir des notifications en temps réel.
+
+### Messages Server → Dashboard
+
+**Exécution annulée :**
+```json
+{
+  "type": "execution_cancelled",
+  "payload": {
+    "execution_id": "550e8400-e29b-41d4-a716-446655440000",
+    "data": {}
+  }
+}
+```
+
+**Exécution terminée :**
+```json
+{
+  "type": "execution_completed",
+  "payload": {
+    "execution_id": "550e8400-e29b-41d4-a716-446655440000",
+    "data": {}
+  }
+}
+```
+
+**Exécution démarrée :**
+```json
+{
+  "type": "execution_started",
+  "payload": {
+    "execution_id": "550e8400-e29b-41d4-a716-446655440000",
+    "data": {}
+  }
+}
+```
+
+### Messages Dashboard → Server
+
+**Ping :**
+```json
+{
+  "type": "ping",
+  "payload": {}
+}
+```
+
 ---
 
 ## WebSocket (Agents)
@@ -392,6 +473,7 @@ wss://localhost:8443/ws/agent
 | 401 | Non authentifié |
 | 403 | Accès refusé |
 | 404 | Ressource non trouvée |
+| 409 | Conflit (ex: exécution déjà terminée) |
 | 500 | Erreur serveur |
 
 **Format d'erreur :**

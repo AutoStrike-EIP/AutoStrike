@@ -173,14 +173,34 @@ func (s *ExecutionService) createTasksForExecution(
 
 // determineExecutor finds the appropriate executor for a technique on an agent
 func (s *ExecutionService) determineExecutor(ctx context.Context, techniqueID string, agent *entity.Agent) string {
-	technique, _ := s.techniqueRepo.FindByID(ctx, techniqueID)
-	if technique == nil || agent == nil {
+	if agent == nil {
 		return "sh"
 	}
+
+	technique, err := s.techniqueRepo.FindByID(ctx, techniqueID)
+	if err != nil || technique == nil {
+		// Return platform-appropriate fallback when technique lookup fails
+		return defaultExecutorForPlatform(agent.Platform)
+	}
+
 	if exec := technique.GetExecutorForPlatform(agent.Platform, agent.Executors); exec != nil {
 		return exec.Type
 	}
-	return "sh"
+
+	// No compatible executor found - return platform-appropriate fallback
+	return defaultExecutorForPlatform(agent.Platform)
+}
+
+// defaultExecutorForPlatform returns the default shell executor for a platform
+func defaultExecutorForPlatform(platform string) string {
+	switch platform {
+	case "windows":
+		return "cmd"
+	case "darwin":
+		return "bash"
+	default:
+		return "sh"
+	}
 }
 
 // UpdateResult updates an execution result

@@ -83,10 +83,11 @@ export default function ExecutionDetails() {
   const { data: results, isLoading: loadingResults } = useQuery<ExecutionResult[]>({
     queryKey: ['execution-results', id],
     queryFn: () => executionApi.getResults(id!).then(res => res.data),
-    enabled: !!id,
+    enabled: !!id && !!execution,
     refetchInterval: () => {
-      // Poll while execution is active
-      return execution?.status === 'running' || execution?.status === 'pending' ? 2000 : false;
+      // Poll while execution is active - use fresh execution data
+      const currentStatus = execution?.status;
+      return currentStatus === 'running' || currentStatus === 'pending' ? 2000 : false;
     },
   });
 

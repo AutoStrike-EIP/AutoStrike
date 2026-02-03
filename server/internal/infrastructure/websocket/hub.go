@@ -85,9 +85,9 @@ func (h *Hub) handleUnregister(client *Client) {
 
 // handleBroadcast handles message broadcasting with proper mutex handling
 func (h *Hub) handleBroadcast(message []byte) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	var disconnectedPaws []string
 
+	h.mu.Lock()
 	for client := range h.clients {
 		select {
 		case client.send <- message:
@@ -97,7 +97,16 @@ func (h *Hub) handleBroadcast(message []byte) {
 			paw := client.GetAgentPaw()
 			if paw != "" {
 				delete(h.agents, paw)
+				disconnectedPaws = append(disconnectedPaws, paw)
 			}
+		}
+	}
+	h.mu.Unlock()
+
+	// Call disconnect callbacks outside of lock to avoid deadlock
+	if h.onAgentDisconnect != nil {
+		for _, paw := range disconnectedPaws {
+			h.onAgentDisconnect(paw)
 		}
 	}
 }

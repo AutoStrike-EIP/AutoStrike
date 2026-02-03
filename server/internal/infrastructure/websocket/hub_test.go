@@ -566,3 +566,43 @@ func TestHub_RegisterAgent_Multiple(t *testing.T) {
 		t.Errorf("Expected 2 agents, got %d", len(hub.agents))
 	}
 }
+
+func TestHub_handleBroadcast_DisconnectCallback(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+
+	var disconnectedPaws []string
+	hub.SetOnAgentDisconnect(func(paw string) {
+		disconnectedPaws = append(disconnectedPaws, paw)
+	})
+
+	// Create client with full send channel (buffer size 0)
+	client := &Client{
+		hub:      hub,
+		send:     make(chan []byte), // Unbuffered channel
+		agentPaw: "backpressure-agent",
+	}
+
+	// Register client and agent
+	hub.clients[client] = true
+	hub.agents["backpressure-agent"] = client
+
+	// Try to broadcast - should fail due to full channel and trigger disconnect
+	hub.handleBroadcast([]byte(`{"type":"test"}`))
+
+	// Verify disconnect callback was called
+	if len(disconnectedPaws) != 1 {
+		t.Errorf("Expected 1 disconnected paw, got %d", len(disconnectedPaws))
+	}
+	if len(disconnectedPaws) > 0 && disconnectedPaws[0] != "backpressure-agent" {
+		t.Errorf("Expected 'backpressure-agent', got '%s'", disconnectedPaws[0])
+	}
+
+	// Verify client was removed
+	if _, ok := hub.clients[client]; ok {
+		t.Error("Client should have been removed")
+	}
+	if _, ok := hub.agents["backpressure-agent"]; ok {
+		t.Error("Agent should have been removed")
+	}
+}

@@ -84,9 +84,9 @@ export default function Techniques() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span
-                    className={`badge ${tacticColors[technique.tactic] || 'bg-gray-100 text-gray-700'}`}
+                    className={`badge ${tacticColors[String(technique.tactic).replaceAll('-', '_')] || 'bg-gray-100 text-gray-700'}`}
                   >
-                    {String(technique.tactic).replaceAll('_', ' ')}
+                    {String(technique.tactic).replaceAll('-', '_').replaceAll('_', ' ')}
                   </span>
                 </td>
                 <td className="px-6 py-4">

@@ -347,3 +347,110 @@ func TestServer_Run_InvalidAddress(t *testing.T) {
 		// Server might be trying to bind, which is also acceptable
 	}
 }
+
+func TestNewServerConfig_EnableAuthTrueNoSecret(t *testing.T) {
+	os.Unsetenv("JWT_SECRET")
+	os.Setenv("ENABLE_AUTH", "true")
+	defer os.Unsetenv("ENABLE_AUTH")
+
+	config := NewServerConfig()
+
+	// ENABLE_AUTH=true should enable auth even without secret
+	if !config.EnableAuth {
+		t.Error("Expected EnableAuth to be true when ENABLE_AUTH=true")
+	}
+}
+
+func TestNewServerConfig_CustomDashboardPath(t *testing.T) {
+	os.Setenv("DASHBOARD_PATH", "/custom/path")
+	defer os.Unsetenv("DASHBOARD_PATH")
+
+	config := NewServerConfig()
+
+	if config.DashboardPath != "/custom/path" {
+		t.Errorf("Expected dashboard path '/custom/path', got '%s'", config.DashboardPath)
+	}
+}
+
+func TestServer_DashboardRoutes_InvalidPath(t *testing.T) {
+	logger := zap.NewNop()
+	agentService := application.NewAgentService(&mockAgentRepo{})
+	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
+	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
+	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+
+	// Use a path that doesn't exist
+	config := &ServerConfig{
+		EnableAuth:    false,
+		DashboardPath: "/nonexistent/path/that/does/not/exist",
+	}
+
+	// Should not panic, just log warning
+	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, logger, config)
+	if server == nil {
+		t.Fatal("Server should be created even with invalid dashboard path")
+	}
+}
+
+func TestServer_NoRoute_APIPath(t *testing.T) {
+	logger := zap.NewNop()
+	agentService := application.NewAgentService(&mockAgentRepo{})
+	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
+	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
+	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+
+	// Create temp directory with index.html for dashboard
+	tmpDir := t.TempDir()
+	indexFile := tmpDir + "/index.html"
+	os.WriteFile(indexFile, []byte("<html></html>"), 0644)
+	os.MkdirAll(tmpDir+"/assets", 0755)
+
+	config := &ServerConfig{
+		EnableAuth:    false,
+		DashboardPath: tmpDir,
+	}
+
+	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, logger, config)
+
+	// Request to non-existent API endpoint should return 404 JSON
+	req, _ := http.NewRequest("GET", "/api/v1/nonexistent", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestServer_NoRoute_NonAPIPath(t *testing.T) {
+	logger := zap.NewNop()
+	agentService := application.NewAgentService(&mockAgentRepo{})
+	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
+	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
+	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+
+	// Create temp directory with index.html for dashboard
+	tmpDir := t.TempDir()
+	indexFile := tmpDir + "/index.html"
+	os.WriteFile(indexFile, []byte("<html>Dashboard</html>"), 0644)
+	os.MkdirAll(tmpDir+"/assets", 0755)
+
+	config := &ServerConfig{
+		EnableAuth:    false,
+		DashboardPath: tmpDir,
+	}
+
+	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, logger, config)
+
+	// Request to non-API path should serve index.html (SPA fallback)
+	req, _ := http.NewRequest("GET", "/some/spa/route", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	if w.Body.String() != "<html>Dashboard</html>" {
+		t.Errorf("Expected index.html content, got %s", w.Body.String())
+	}
+}

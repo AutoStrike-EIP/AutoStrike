@@ -700,3 +700,81 @@ func TestScenarioHandler_UpdateScenario_ServiceError(t *testing.T) {
 		t.Errorf("Expected status 500, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestScenarioHandler_ListScenarios_NilScenarios(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	// Empty repo - returns nil slice
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios", handler.ListScenarios)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Should return [] not null
+	if w.Body.String() != "[]" {
+		t.Errorf("Expected empty array '[]', got '%s'", w.Body.String())
+	}
+}
+
+func TestScenarioHandler_GetScenariosByTag_NilScenarios(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	// Empty repo - returns nil slice
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios/tag/:tag", handler.GetScenariosByTag)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios/tag/nonexistent", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Should return [] not null
+	if w.Body.String() != "[]" {
+		t.Errorf("Expected empty array '[]', got '%s'", w.Body.String())
+	}
+}
+
+func TestCreateScenarioRequest_Struct(t *testing.T) {
+	req := CreateScenarioRequest{
+		Name:        "Test",
+		Description: "Test description",
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1082"}, Order: 1},
+		},
+		Tags: []string{"test"},
+	}
+
+	if req.Name != "Test" {
+		t.Errorf("Name = %s, want Test", req.Name)
+	}
+}
+
+func TestUpdateScenarioRequest_Struct(t *testing.T) {
+	req := UpdateScenarioRequest{
+		Name:        "Updated",
+		Description: "Updated description",
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1082"}, Order: 1},
+		},
+		Tags: []string{"updated"},
+	}
+
+	if req.Name != "Updated" {
+		t.Errorf("Name = %s, want Updated", req.Name)
+	}
+}

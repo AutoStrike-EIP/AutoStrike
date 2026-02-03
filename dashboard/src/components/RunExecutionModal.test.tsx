@@ -39,11 +39,9 @@ const mockAgents = [
     platform: 'windows',
     status: 'online',
     last_seen: new Date().toISOString(),
-    os_info: '',
     username: 'user1',
-    privilege: 'user',
+    executors: ['powershell', 'cmd'],
     created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   },
   {
     paw: 'agent-002-uuid-test',
@@ -51,11 +49,9 @@ const mockAgents = [
     platform: 'linux',
     status: 'online',
     last_seen: new Date().toISOString(),
-    os_info: '',
     username: 'root',
-    privilege: 'admin',
+    executors: ['bash', 'sh'],
     created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   },
   {
     paw: 'agent-003-uuid-test',
@@ -63,11 +59,9 @@ const mockAgents = [
     platform: 'windows',
     status: 'offline',
     last_seen: new Date().toISOString(),
-    os_info: '',
     username: 'user2',
-    privilege: 'user',
+    executors: ['powershell', 'cmd'],
     created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   },
 ];
 

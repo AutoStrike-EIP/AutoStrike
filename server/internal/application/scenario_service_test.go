@@ -299,3 +299,29 @@ func TestValidationError_Empty(t *testing.T) {
 		t.Errorf("Expected 'validation failed', got '%s'", err.Error())
 	}
 }
+
+func TestImportScenarios(t *testing.T) {
+	scenarioRepo := newMockScenarioRepo()
+	techRepo := newMockTechniqueRepo()
+	validator := service.NewTechniqueValidator()
+
+	svc := NewScenarioService(scenarioRepo, techRepo, validator)
+	err := svc.ImportScenarios(context.Background(), "/path/to/scenarios.yaml")
+	// Mock repo returns nil error
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+}
+
+func TestImportScenarios_Error(t *testing.T) {
+	scenarioRepo := newMockScenarioRepo()
+	scenarioRepo.err = errors.New("import error")
+	techRepo := newMockTechniqueRepo()
+	validator := service.NewTechniqueValidator()
+
+	svc := NewScenarioService(scenarioRepo, techRepo, validator)
+	err := svc.ImportScenarios(context.Background(), "/path/to/scenarios.yaml")
+	if err == nil {
+		t.Fatal("Expected error")
+	}
+}

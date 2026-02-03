@@ -764,3 +764,59 @@ func TestStartExecutionFindByPawsError(t *testing.T) {
 		t.Errorf("Expected FindByPaws error, got %v", err)
 	}
 }
+
+func TestDefaultExecutorForPlatform(t *testing.T) {
+	tests := []struct {
+		platform string
+		expected string
+	}{
+		{"windows", "cmd"},
+		{"darwin", "bash"},
+		{"linux", "sh"},
+		{"freebsd", "sh"},
+		{"", "sh"},
+	}
+
+	for _, tt := range tests {
+		result := defaultExecutorForPlatform(tt.platform)
+		if result != tt.expected {
+			t.Errorf("defaultExecutorForPlatform(%s) = %s, want %s", tt.platform, result, tt.expected)
+		}
+	}
+}
+
+func TestDetermineExecutor_TechniqueNotFound(t *testing.T) {
+	techRepo := newMockTechniqueRepo()
+	techRepo.err = errors.New("technique not found")
+
+	svc := &ExecutionService{techniqueRepo: techRepo}
+
+	// Windows agent should get "cmd" when technique lookup fails
+	windowsAgent := &entity.Agent{Platform: "windows", Executors: []string{"cmd", "powershell"}}
+	result := svc.determineExecutor(context.Background(), "T9999", windowsAgent)
+	if result != "cmd" {
+		t.Errorf("Expected 'cmd' for Windows agent, got '%s'", result)
+	}
+
+	// Linux agent should get "sh" when technique lookup fails
+	linuxAgent := &entity.Agent{Platform: "linux", Executors: []string{"sh", "bash"}}
+	result = svc.determineExecutor(context.Background(), "T9999", linuxAgent)
+	if result != "sh" {
+		t.Errorf("Expected 'sh' for Linux agent, got '%s'", result)
+	}
+
+	// macOS agent should get "bash" when technique lookup fails
+	darwinAgent := &entity.Agent{Platform: "darwin", Executors: []string{"bash", "zsh"}}
+	result = svc.determineExecutor(context.Background(), "T9999", darwinAgent)
+	if result != "bash" {
+		t.Errorf("Expected 'bash' for macOS agent, got '%s'", result)
+	}
+}
+
+func TestDetermineExecutor_NilAgent(t *testing.T) {
+	svc := &ExecutionService{}
+	result := svc.determineExecutor(context.Background(), "T1059", nil)
+	if result != "sh" {
+		t.Errorf("Expected 'sh' for nil agent, got '%s'", result)
+	}
+}

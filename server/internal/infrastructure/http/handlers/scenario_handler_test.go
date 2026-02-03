@@ -405,6 +405,58 @@ func TestScenarioHandler_UpdateScenario(t *testing.T) {
 	}
 }
 
+func TestScenarioHandler_UpdateScenario_PreservesAuthor(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	scenarioRepo.scenarios["s1"] = &entity.Scenario{
+		ID:        "s1",
+		Name:      "Original Name",
+		Author:    "original-author",
+		CreatedAt: time.Now(),
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1082"}, Order: 1},
+		},
+	}
+	techRepo := newTestTechniqueRepo()
+	techRepo.techniques["T1082"] = &entity.Technique{
+		ID:        "T1082",
+		Name:      "System Information Discovery",
+		Tactic:    entity.TacticDiscovery,
+		Platforms: []string{"windows", "linux"},
+	}
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.PUT("/scenarios/:id", handler.UpdateScenario)
+
+	body := UpdateScenarioRequest{
+		Name:        "Updated Name",
+		Description: "Updated description",
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1082"}, Order: 1},
+		},
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/scenarios/s1", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify Author was preserved
+	updated := scenarioRepo.scenarios["s1"]
+	if updated.Author != "original-author" {
+		t.Errorf("Expected Author to be preserved as 'original-author', got '%s'", updated.Author)
+	}
+	if updated.Name != "Updated Name" {
+		t.Errorf("Expected Name to be updated to 'Updated Name', got '%s'", updated.Name)
+	}
+}
+
 func TestScenarioHandler_UpdateScenario_NotFound(t *testing.T) {
 	scenarioRepo := newTestScenarioRepo()
 	techRepo := newTestTechniqueRepo()

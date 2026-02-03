@@ -144,6 +144,7 @@ func (h *ScenarioHandler) UpdateScenario(c *gin.Context) {
 		Description: req.Description,
 		Phases:      req.Phases,
 		Tags:        req.Tags,
+		Author:      existing.Author, // Preserve non-updatable fields
 		CreatedAt:   existing.CreatedAt,
 	}
 

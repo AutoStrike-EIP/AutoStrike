@@ -184,7 +184,8 @@ func (h *ExecutionHandler) markResultAsFailed(resultID, reason string) {
 		return
 	}
 	// Use background context since this may be called after the request ends
-	_ = h.service.UpdateResultByID(context.Background(), resultID, entity.StatusFailed, reason, -1)
+	// Empty agent paw skips validation - this is internal server marking, not agent-reported
+	_ = h.service.UpdateResultByID(context.Background(), resultID, entity.StatusFailed, reason, -1, "")
 }
 
 // CompleteExecution marks an execution as completed

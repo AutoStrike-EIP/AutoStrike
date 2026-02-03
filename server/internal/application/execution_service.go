@@ -225,16 +225,23 @@ func (s *ExecutionService) UpdateResult(
 }
 
 // UpdateResultByID updates a result by its ID with exit code
+// If agentPaw is provided, it validates that the result belongs to the specified agent
 func (s *ExecutionService) UpdateResultByID(
 	ctx context.Context,
 	resultID string,
 	status entity.ResultStatus,
 	output string,
 	exitCode int,
+	agentPaw string,
 ) error {
 	result, err := s.resultRepo.FindResultByID(ctx, resultID)
 	if err != nil {
 		return fmt.Errorf("result not found: %w", err)
+	}
+
+	// Validate that the result belongs to the requesting agent
+	if agentPaw != "" && result.AgentPaw != agentPaw {
+		return fmt.Errorf("agent %s is not authorized to update result %s (belongs to %s)", agentPaw, resultID, result.AgentPaw)
 	}
 
 	executionID := result.ExecutionID

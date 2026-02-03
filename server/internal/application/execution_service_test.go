@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -639,7 +640,7 @@ func TestUpdateResultByID_Success(t *testing.T) {
 	calculator := service.NewScoreCalculator()
 
 	svc := &ExecutionService{resultRepo: resultRepo, calculator: calculator}
-	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "test output", 0)
+	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "test output", 0, "")
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -649,7 +650,7 @@ func TestUpdateResultByID_NotFound(t *testing.T) {
 	resultRepo := newMockResultRepo()
 
 	svc := &ExecutionService{resultRepo: resultRepo}
-	err := svc.UpdateResultByID(context.Background(), "invalid", entity.StatusSuccess, "", 0)
+	err := svc.UpdateResultByID(context.Background(), "invalid", entity.StatusSuccess, "", 0, "")
 	if err == nil {
 		t.Fatal("Expected error for not found result")
 	}
@@ -663,7 +664,7 @@ func TestUpdateResultByID_UpdateError(t *testing.T) {
 	resultRepo.updateResultErr = errors.New("update failed")
 
 	svc := &ExecutionService{resultRepo: resultRepo}
-	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "", 0)
+	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "", 0, "")
 	if err == nil {
 		t.Fatal("Expected error for update failure")
 	}
@@ -682,7 +683,7 @@ func TestUpdateResultByID_AutoCompletes(t *testing.T) {
 	calculator := service.NewScoreCalculator()
 
 	svc := &ExecutionService{resultRepo: resultRepo, calculator: calculator}
-	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "done", 0)
+	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "done", 0, "")
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -708,7 +709,7 @@ func TestUpdateResultByID_DoesNotAutoCompleteWithPending(t *testing.T) {
 	calculator := service.NewScoreCalculator()
 
 	svc := &ExecutionService{resultRepo: resultRepo, calculator: calculator}
-	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "done", 0)
+	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "done", 0, "")
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -717,6 +718,35 @@ func TestUpdateResultByID_DoesNotAutoCompleteWithPending(t *testing.T) {
 	exec := resultRepo.executions["e1"]
 	if exec.Status != entity.ExecutionRunning {
 		t.Errorf("Expected execution to still be running, got %v", exec.Status)
+	}
+}
+
+func TestUpdateResultByID_AgentPawValidation(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:     "e1",
+		Status: entity.ExecutionRunning,
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{
+		{ID: "r1", ExecutionID: "e1", AgentPaw: "agent-1", Status: entity.StatusPending},
+	}
+	calculator := service.NewScoreCalculator()
+
+	svc := &ExecutionService{resultRepo: resultRepo, calculator: calculator}
+
+	// Should fail with wrong agent paw
+	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "output", 0, "wrong-agent")
+	if err == nil {
+		t.Fatal("Expected error for wrong agent paw")
+	}
+	if !strings.Contains(err.Error(), "not authorized") {
+		t.Errorf("Expected authorization error, got: %v", err)
+	}
+
+	// Should succeed with correct agent paw
+	err = svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "output", 0, "agent-1")
+	if err != nil {
+		t.Fatalf("Expected no error with correct agent paw, got %v", err)
 	}
 }
 

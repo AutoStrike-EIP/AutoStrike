@@ -235,7 +235,8 @@ func (h *WebSocketHandler) handleTaskResult(client *websocket.Client, payload js
 			zap.String("status", string(status)),
 		)
 
-		if err := h.executionService.UpdateResultByID(ctx, result.TaskID, status, output, result.ExitCode); err != nil {
+		agentPaw := client.GetAgentPaw()
+		if err := h.executionService.UpdateResultByID(ctx, result.TaskID, status, output, result.ExitCode, agentPaw); err != nil {
 			h.logger.Error("Failed to update result", zap.Error(err), zap.String("task_id", result.TaskID))
 		} else {
 			h.logger.Info("Result updated successfully", zap.String("task_id", result.TaskID))

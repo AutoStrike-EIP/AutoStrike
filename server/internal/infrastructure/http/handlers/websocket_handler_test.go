@@ -1340,6 +1340,7 @@ func TestWebSocketHandler_HandleTaskResult_WithRealExecutionService(t *testing.T
 	resultRepo.results["task-result-test"] = &entity.ExecutionResult{
 		ID:          "task-result-test",
 		ExecutionID: "exec-1",
+		AgentPaw:    "test-agent",
 		Status:      entity.StatusPending,
 	}
 
@@ -1443,6 +1444,7 @@ func TestWebSocketHandler_HandleTaskResult_FailedResultWithError(t *testing.T) {
 	resultRepo.results["task-failed-test"] = &entity.ExecutionResult{
 		ID:          "task-failed-test",
 		ExecutionID: "exec-2",
+		AgentPaw:    "test-agent",
 		Status:      entity.StatusPending,
 	}
 

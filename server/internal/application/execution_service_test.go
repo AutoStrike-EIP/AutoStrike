@@ -101,6 +101,20 @@ func (m *mockResultRepo) UpdateResult(ctx context.Context, r *entity.ExecutionRe
 	return nil
 }
 
+func (m *mockResultRepo) FindResultByID(ctx context.Context, id string) (*entity.ExecutionResult, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	for _, results := range m.results {
+		for _, r := range results {
+			if r.ID == id {
+				return r, nil
+			}
+		}
+	}
+	return nil, errors.New("result not found")
+}
+
 func (m *mockResultRepo) FindResultsByExecution(ctx context.Context, executionID string) ([]*entity.ExecutionResult, error) {
 	if m.findResultsErr != nil {
 		return nil, m.findResultsErr
@@ -345,15 +359,18 @@ func TestStartExecutionSuccess(t *testing.T) {
 	calculator := service.NewScoreCalculator()
 
 	svc := NewExecutionService(resultRepo, scenarioRepo, techRepo, agentRepo, orchestrator, calculator)
-	exec, err := svc.StartExecution(context.Background(), "s1", []string{"paw1"}, false)
+	result, err := svc.StartExecution(context.Background(), "s1", []string{"paw1"}, false)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
-	if exec == nil {
+	if result == nil || result.Execution == nil {
 		t.Fatal("Expected execution to be created")
 	}
-	if exec.Status != entity.ExecutionRunning {
-		t.Errorf("Expected status Running, got %v", exec.Status)
+	if result.Execution.Status != entity.ExecutionRunning {
+		t.Errorf("Expected status Running, got %v", result.Execution.Status)
+	}
+	if len(result.Tasks) == 0 {
+		t.Error("Expected tasks to be returned")
 	}
 }
 
@@ -607,5 +624,143 @@ func TestCancelExecutionUpdateResultError(t *testing.T) {
 	err := svc.CancelExecution(context.Background(), "e1")
 	if err == nil {
 		t.Fatal("Expected error for update result failure")
+	}
+}
+
+func TestUpdateResultByID_Success(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:     "e1",
+		Status: entity.ExecutionRunning,
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{
+		{ID: "r1", ExecutionID: "e1", Status: entity.StatusPending},
+	}
+	calculator := service.NewScoreCalculator()
+
+	svc := &ExecutionService{resultRepo: resultRepo, calculator: calculator}
+	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "test output", 0)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+}
+
+func TestUpdateResultByID_NotFound(t *testing.T) {
+	resultRepo := newMockResultRepo()
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.UpdateResultByID(context.Background(), "invalid", entity.StatusSuccess, "", 0)
+	if err == nil {
+		t.Fatal("Expected error for not found result")
+	}
+}
+
+func TestUpdateResultByID_UpdateError(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.results["e1"] = []*entity.ExecutionResult{
+		{ID: "r1", ExecutionID: "e1", Status: entity.StatusPending},
+	}
+	resultRepo.updateResultErr = errors.New("update failed")
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "", 0)
+	if err == nil {
+		t.Fatal("Expected error for update failure")
+	}
+}
+
+func TestUpdateResultByID_AutoCompletes(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:     "e1",
+		Status: entity.ExecutionRunning,
+	}
+	// Only one result that we're about to complete
+	resultRepo.results["e1"] = []*entity.ExecutionResult{
+		{ID: "r1", ExecutionID: "e1", Status: entity.StatusSuccess}, // Already marked success in mock after update
+	}
+	calculator := service.NewScoreCalculator()
+
+	svc := &ExecutionService{resultRepo: resultRepo, calculator: calculator}
+	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "done", 0)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// After update, execution should be completed
+	exec := resultRepo.executions["e1"]
+	if exec.Status != entity.ExecutionCompleted {
+		t.Errorf("Expected execution to be completed, got %v", exec.Status)
+	}
+}
+
+func TestUpdateResultByID_DoesNotAutoCompleteWithPending(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:     "e1",
+		Status: entity.ExecutionRunning,
+	}
+	// Two results, one still pending
+	resultRepo.results["e1"] = []*entity.ExecutionResult{
+		{ID: "r1", ExecutionID: "e1", Status: entity.StatusSuccess},
+		{ID: "r2", ExecutionID: "e1", Status: entity.StatusPending},
+	}
+	calculator := service.NewScoreCalculator()
+
+	svc := &ExecutionService{resultRepo: resultRepo, calculator: calculator}
+	err := svc.UpdateResultByID(context.Background(), "r1", entity.StatusSuccess, "done", 0)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Execution should still be running
+	exec := resultRepo.executions["e1"]
+	if exec.Status != entity.ExecutionRunning {
+		t.Errorf("Expected execution to still be running, got %v", exec.Status)
+	}
+}
+
+func TestCheckAndCompleteExecution_FindResultsError(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.findResultsErr = errors.New("db error")
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	// Should not return error even if find fails
+	err := svc.checkAndCompleteExecution(context.Background(), "e1")
+	if err != nil {
+		t.Fatalf("Expected no error (graceful handling), got %v", err)
+	}
+}
+
+func TestCheckAndCompleteExecution_EmptyResults(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.results["e1"] = []*entity.ExecutionResult{}
+
+	svc := &ExecutionService{resultRepo: resultRepo}
+	err := svc.checkAndCompleteExecution(context.Background(), "e1")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+}
+
+func TestStartExecutionFindByPawsError(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	scenarioRepo := newMockScenarioRepo()
+	scenarioRepo.scenarios["s1"] = &entity.Scenario{ID: "s1"}
+	agentRepo := newMockAgentRepo()
+	agentRepo.findErr = errors.New("db connection failed")
+
+	svc := &ExecutionService{
+		resultRepo:   resultRepo,
+		scenarioRepo: scenarioRepo,
+		agentRepo:    agentRepo,
+	}
+
+	_, err := svc.StartExecution(context.Background(), "s1", []string{"paw1"}, false)
+	if err == nil {
+		t.Fatal("Expected error for FindByPaws failure")
+	}
+	if !errors.Is(err, agentRepo.findErr) && err.Error() != "failed to load agents: db connection failed" {
+		t.Errorf("Expected FindByPaws error, got %v", err)
 	}
 }

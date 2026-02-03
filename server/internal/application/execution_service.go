@@ -41,13 +41,30 @@ func NewExecutionService(
 	}
 }
 
+// TaskDispatchInfo contains information needed to dispatch a task to an agent
+type TaskDispatchInfo struct {
+	ResultID    string
+	AgentPaw    string
+	TechniqueID string
+	Command     string
+	Executor    string
+	Timeout     int
+	Cleanup     string
+}
+
+// ExecutionWithTasks contains the execution and tasks to dispatch
+type ExecutionWithTasks struct {
+	Execution *entity.Execution
+	Tasks     []TaskDispatchInfo
+}
+
 // StartExecution starts a new scenario execution
 func (s *ExecutionService) StartExecution(
 	ctx context.Context,
 	scenarioID string,
 	agentPaws []string,
 	safeMode bool,
-) (*entity.Execution, error) {
+) (*ExecutionWithTasks, error) {
 	// Load scenario
 	scenario, err := s.scenarioRepo.FindByID(ctx, scenarioID)
 	if err != nil {
@@ -97,7 +114,8 @@ func (s *ExecutionService) StartExecution(
 		return nil, fmt.Errorf("failed to create execution: %w", err)
 	}
 
-	// Create pending results for each task
+	// Create pending results for each task and collect dispatch info
+	tasks := make([]TaskDispatchInfo, 0, len(plan.Tasks))
 	for _, task := range plan.Tasks {
 		result := &entity.ExecutionResult{
 			ID:          uuid.New().String(),
@@ -111,9 +129,34 @@ func (s *ExecutionService) StartExecution(
 		if err := s.resultRepo.CreateResult(ctx, result); err != nil {
 			return nil, fmt.Errorf("failed to create result: %w", err)
 		}
+
+		// Get the technique to determine the executor
+		technique, _ := s.techniqueRepo.FindByID(ctx, task.TechniqueID)
+		executor := "sh" // default
+		if technique != nil {
+			agent := agentMap[task.AgentPaw]
+			if agent != nil {
+				if exec := technique.GetExecutorForPlatform(agent.Platform, agent.Executors); exec != nil {
+					executor = exec.Type
+				}
+			}
+		}
+
+		tasks = append(tasks, TaskDispatchInfo{
+			ResultID:    result.ID,
+			AgentPaw:    task.AgentPaw,
+			TechniqueID: task.TechniqueID,
+			Command:     task.Command,
+			Executor:    executor,
+			Timeout:     task.Timeout,
+			Cleanup:     task.Cleanup,
+		})
 	}
 
-	return execution, nil
+	return &ExecutionWithTasks{
+		Execution: execution,
+		Tasks:     tasks,
+	}, nil
 }
 
 // UpdateResult updates an execution result
@@ -124,23 +167,70 @@ func (s *ExecutionService) UpdateResult(
 	output string,
 	detected bool,
 ) error {
-	results, err := s.resultRepo.FindResultsByExecution(ctx, resultID)
+	result, err := s.resultRepo.FindResultByID(ctx, resultID)
 	if err != nil {
 		return err
 	}
 
-	for _, result := range results {
-		if result.ID == resultID {
-			now := time.Now()
-			result.Status = status
-			result.Output = output
-			result.Detected = detected
-			result.CompletedAt = &now
-			return s.resultRepo.UpdateResult(ctx, result)
+	now := time.Now()
+	result.Status = status
+	result.Output = output
+	result.Detected = detected
+	result.CompletedAt = &now
+	return s.resultRepo.UpdateResult(ctx, result)
+}
+
+// UpdateResultByID updates a result by its ID with exit code
+func (s *ExecutionService) UpdateResultByID(
+	ctx context.Context,
+	resultID string,
+	status entity.ResultStatus,
+	output string,
+	exitCode int,
+) error {
+	result, err := s.resultRepo.FindResultByID(ctx, resultID)
+	if err != nil {
+		return fmt.Errorf("result not found: %w", err)
+	}
+
+	executionID := result.ExecutionID
+
+	now := time.Now()
+	result.Status = status
+	result.Output = output
+	result.ExitCode = exitCode
+	result.CompletedAt = &now
+
+	if err := s.resultRepo.UpdateResult(ctx, result); err != nil {
+		return err
+	}
+
+	// Check if all results are completed and auto-complete execution
+	return s.checkAndCompleteExecution(ctx, executionID)
+}
+
+// checkAndCompleteExecution checks if all results are done and completes the execution
+func (s *ExecutionService) checkAndCompleteExecution(ctx context.Context, executionID string) error {
+	results, err := s.resultRepo.FindResultsByExecution(ctx, executionID)
+	if err != nil {
+		return nil // Don't fail the result update if we can't check
+	}
+
+	// Check if all results are completed (not pending or running)
+	allDone := true
+	for _, r := range results {
+		if r.Status == entity.StatusPending || r.Status == entity.StatusRunning {
+			allDone = false
+			break
 		}
 	}
 
-	return fmt.Errorf("result not found")
+	if allDone && len(results) > 0 {
+		// All tasks completed, mark execution as completed
+		return s.CompleteExecution(ctx, executionID)
+	}
+
+	return nil
 }
 
 // CompleteExecution marks an execution as completed and calculates score

@@ -92,6 +92,7 @@ func NewServerWithConfig(
 	// WebSocket routes (uses agent auth)
 	if hub != nil {
 		wsHandler := handlers.NewWebSocketHandler(hub, agentService, logger)
+		wsHandler.SetExecutionService(executionService)
 		wsHandler.RegisterRoutes(router)
 	}
 

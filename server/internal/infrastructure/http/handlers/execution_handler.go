@@ -123,16 +123,53 @@ func (h *ExecutionHandler) StartExecution(c *gin.Context) {
 		return
 	}
 
-	execution, err := h.service.StartExecution(c.Request.Context(), req.ScenarioID, req.AgentPaws, req.SafeMode)
+	// Validate that at least one agent is selected
+	if len(req.AgentPaws) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "at least one agent must be selected"})
+		return
+	}
+
+	result, err := h.service.StartExecution(c.Request.Context(), req.ScenarioID, req.AgentPaws, req.SafeMode)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Broadcast execution started event to all connected clients
-	h.broadcastExecutionEvent("execution_started", execution.ID, execution)
+	h.broadcastExecutionEvent("execution_started", result.Execution.ID, result.Execution)
 
-	c.JSON(http.StatusCreated, execution)
+	// Dispatch tasks to agents via WebSocket
+	h.dispatchTasksToAgents(result.Tasks)
+
+	c.JSON(http.StatusCreated, result.Execution)
+}
+
+// dispatchTasksToAgents sends task messages to the appropriate agents
+func (h *ExecutionHandler) dispatchTasksToAgents(tasks []application.TaskDispatchInfo) {
+	if h.hub == nil {
+		return
+	}
+
+	for _, task := range tasks {
+		taskMsg := map[string]interface{}{
+			"type": "task",
+			"payload": map[string]interface{}{
+				"id":           task.ResultID,
+				"technique_id": task.TechniqueID,
+				"command":      task.Command,
+				"executor":     task.Executor,
+				"timeout":      task.Timeout,
+				"cleanup":      task.Cleanup,
+			},
+		}
+
+		msgBytes, err := json.Marshal(taskMsg)
+		if err != nil {
+			continue
+		}
+
+		h.hub.SendToAgent(task.AgentPaw, msgBytes)
+	}
 }
 
 // CompleteExecution marks an execution as completed

@@ -122,6 +122,42 @@ func (r *ResultRepository) UpdateResult(ctx context.Context, result *entity.Exec
 	return err
 }
 
+// FindResultByID finds a result by its ID
+func (r *ResultRepository) FindResultByID(ctx context.Context, id string) (*entity.ExecutionResult, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, execution_id, technique_id, agent_paw, status, output, detected, started_at, completed_at
+		FROM execution_results WHERE id = ?
+	`, id)
+
+	result := &entity.ExecutionResult{}
+	var output sql.NullString
+	var completedAt sql.NullTime
+
+	err := row.Scan(
+		&result.ID,
+		&result.ExecutionID,
+		&result.TechniqueID,
+		&result.AgentPaw,
+		&result.Status,
+		&output,
+		&result.Detected,
+		&result.StartedAt,
+		&completedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if output.Valid {
+		result.Output = output.String
+	}
+	if completedAt.Valid {
+		result.CompletedAt = &completedAt.Time
+	}
+
+	return result, nil
+}
+
 // FindResultsByExecution finds results by execution ID
 func (r *ResultRepository) FindResultsByExecution(ctx context.Context, executionID string) ([]*entity.ExecutionResult, error) {
 	rows, err := r.db.QueryContext(ctx, `

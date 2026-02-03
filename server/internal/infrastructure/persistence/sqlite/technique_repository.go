@@ -13,9 +13,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SQL column constants for techniques
+// SQL column constants and error messages for techniques
 const (
-	techniqueColumns = "id, name, description, tactic, platforms, executors, detection, is_safe"
+	techniqueColumns      = "id, name, description, tactic, platforms, executors, detection, is_safe"
+	errMarshalPlatforms   = "failed to marshal platforms: %w"
+	errMarshalExecutors   = "failed to marshal executors: %w"
+	errMarshalDetection   = "failed to marshal detection: %w"
 )
 
 // TechniqueRepository implements repository.TechniqueRepository using SQLite
@@ -32,15 +35,15 @@ func NewTechniqueRepository(db *sql.DB) *TechniqueRepository {
 func (r *TechniqueRepository) Create(ctx context.Context, technique *entity.Technique) error {
 	platforms, err := json.Marshal(technique.Platforms)
 	if err != nil {
-		return fmt.Errorf("failed to marshal platforms: %w", err)
+		return fmt.Errorf(errMarshalPlatforms, err)
 	}
 	executors, err := json.Marshal(technique.Executors)
 	if err != nil {
-		return fmt.Errorf("failed to marshal executors: %w", err)
+		return fmt.Errorf(errMarshalExecutors, err)
 	}
 	detection, err := json.Marshal(technique.Detection)
 	if err != nil {
-		return fmt.Errorf("failed to marshal detection: %w", err)
+		return fmt.Errorf(errMarshalDetection, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, `
@@ -55,15 +58,15 @@ func (r *TechniqueRepository) Create(ctx context.Context, technique *entity.Tech
 func (r *TechniqueRepository) Update(ctx context.Context, technique *entity.Technique) error {
 	platforms, err := json.Marshal(technique.Platforms)
 	if err != nil {
-		return fmt.Errorf("failed to marshal platforms: %w", err)
+		return fmt.Errorf(errMarshalPlatforms, err)
 	}
 	executors, err := json.Marshal(technique.Executors)
 	if err != nil {
-		return fmt.Errorf("failed to marshal executors: %w", err)
+		return fmt.Errorf(errMarshalExecutors, err)
 	}
 	detection, err := json.Marshal(technique.Detection)
 	if err != nil {
-		return fmt.Errorf("failed to marshal detection: %w", err)
+		return fmt.Errorf(errMarshalDetection, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, `
@@ -170,15 +173,15 @@ func (r *TechniqueRepository) ImportFromYAML(ctx context.Context, path string) e
 func (r *TechniqueRepository) upsert(ctx context.Context, technique *entity.Technique) error {
 	platforms, err := json.Marshal(technique.Platforms)
 	if err != nil {
-		return fmt.Errorf("failed to marshal platforms: %w", err)
+		return fmt.Errorf(errMarshalPlatforms, err)
 	}
 	executors, err := json.Marshal(technique.Executors)
 	if err != nil {
-		return fmt.Errorf("failed to marshal executors: %w", err)
+		return fmt.Errorf(errMarshalExecutors, err)
 	}
 	detection, err := json.Marshal(technique.Detection)
 	if err != nil {
-		return fmt.Errorf("failed to marshal detection: %w", err)
+		return fmt.Errorf(errMarshalDetection, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, `

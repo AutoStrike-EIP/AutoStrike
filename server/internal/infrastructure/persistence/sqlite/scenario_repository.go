@@ -13,9 +13,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SQL column constants for scenarios
+// SQL column constants and error messages for scenarios
 const (
-	scenarioColumns = "id, name, description, phases, tags, created_at, updated_at"
+	scenarioColumns       = "id, name, description, phases, tags, created_at, updated_at"
+	errMarshalPhases      = "failed to marshal phases: %w"
+	errMarshalTags        = "failed to marshal tags: %w"
 )
 
 // ScenarioRepository implements repository.ScenarioRepository using SQLite
@@ -32,11 +34,11 @@ func NewScenarioRepository(db *sql.DB) *ScenarioRepository {
 func (r *ScenarioRepository) Create(ctx context.Context, scenario *entity.Scenario) error {
 	phases, err := json.Marshal(scenario.Phases)
 	if err != nil {
-		return fmt.Errorf("failed to marshal phases: %w", err)
+		return fmt.Errorf(errMarshalPhases, err)
 	}
 	tags, err := json.Marshal(scenario.Tags)
 	if err != nil {
-		return fmt.Errorf("failed to marshal tags: %w", err)
+		return fmt.Errorf(errMarshalTags, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, `
@@ -51,11 +53,11 @@ func (r *ScenarioRepository) Create(ctx context.Context, scenario *entity.Scenar
 func (r *ScenarioRepository) Update(ctx context.Context, scenario *entity.Scenario) error {
 	phases, err := json.Marshal(scenario.Phases)
 	if err != nil {
-		return fmt.Errorf("failed to marshal phases: %w", err)
+		return fmt.Errorf(errMarshalPhases, err)
 	}
 	tags, err := json.Marshal(scenario.Tags)
 	if err != nil {
-		return fmt.Errorf("failed to marshal tags: %w", err)
+		return fmt.Errorf(errMarshalTags, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, `
@@ -183,11 +185,11 @@ func (r *ScenarioRepository) ImportFromYAML(ctx context.Context, path string) er
 func (r *ScenarioRepository) upsert(ctx context.Context, scenario *entity.Scenario) error {
 	phases, err := json.Marshal(scenario.Phases)
 	if err != nil {
-		return fmt.Errorf("failed to marshal phases: %w", err)
+		return fmt.Errorf(errMarshalPhases, err)
 	}
 	tags, err := json.Marshal(scenario.Tags)
 	if err != nil {
-		return fmt.Errorf("failed to marshal tags: %w", err)
+		return fmt.Errorf(errMarshalTags, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, `

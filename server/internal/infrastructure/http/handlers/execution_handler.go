@@ -179,7 +179,7 @@ func (h *ExecutionHandler) dispatchTasksToAgents(tasks []application.TaskDispatc
 }
 
 // markResultAsFailed marks a result as failed when dispatch fails
-func (h *ExecutionHandler) markResultAsFailed(resultID string, reason string) {
+func (h *ExecutionHandler) markResultAsFailed(resultID, reason string) {
 	if h.service == nil {
 		return
 	}

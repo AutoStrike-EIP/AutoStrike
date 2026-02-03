@@ -13,6 +13,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// SQL column constants and error messages for techniques
+const (
+	techniqueColumns      = "id, name, description, tactic, platforms, executors, detection, is_safe"
+	errMarshalPlatforms   = "failed to marshal platforms: %w"
+	errMarshalExecutors   = "failed to marshal executors: %w"
+	errMarshalDetection   = "failed to marshal detection: %w"
+)
+
 // TechniqueRepository implements repository.TechniqueRepository using SQLite
 type TechniqueRepository struct {
 	db *sql.DB
@@ -27,15 +35,15 @@ func NewTechniqueRepository(db *sql.DB) *TechniqueRepository {
 func (r *TechniqueRepository) Create(ctx context.Context, technique *entity.Technique) error {
 	platforms, err := json.Marshal(technique.Platforms)
 	if err != nil {
-		return fmt.Errorf("failed to marshal platforms: %w", err)
+		return fmt.Errorf(errMarshalPlatforms, err)
 	}
 	executors, err := json.Marshal(technique.Executors)
 	if err != nil {
-		return fmt.Errorf("failed to marshal executors: %w", err)
+		return fmt.Errorf(errMarshalExecutors, err)
 	}
 	detection, err := json.Marshal(technique.Detection)
 	if err != nil {
-		return fmt.Errorf("failed to marshal detection: %w", err)
+		return fmt.Errorf(errMarshalDetection, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, `
@@ -50,15 +58,15 @@ func (r *TechniqueRepository) Create(ctx context.Context, technique *entity.Tech
 func (r *TechniqueRepository) Update(ctx context.Context, technique *entity.Technique) error {
 	platforms, err := json.Marshal(technique.Platforms)
 	if err != nil {
-		return fmt.Errorf("failed to marshal platforms: %w", err)
+		return fmt.Errorf(errMarshalPlatforms, err)
 	}
 	executors, err := json.Marshal(technique.Executors)
 	if err != nil {
-		return fmt.Errorf("failed to marshal executors: %w", err)
+		return fmt.Errorf(errMarshalExecutors, err)
 	}
 	detection, err := json.Marshal(technique.Detection)
 	if err != nil {
-		return fmt.Errorf("failed to marshal detection: %w", err)
+		return fmt.Errorf(errMarshalDetection, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, `
@@ -80,10 +88,9 @@ func (r *TechniqueRepository) FindByID(ctx context.Context, id string) (*entity.
 	technique := &entity.Technique{}
 	var platforms, executors, detection string
 
-	err := r.db.QueryRowContext(ctx, `
-		SELECT id, name, description, tactic, platforms, executors, detection, is_safe
-		FROM techniques WHERE id = ?
-	`, id).Scan(&technique.ID, &technique.Name, &technique.Description, &technique.Tactic, &platforms, &executors, &detection, &technique.IsSafe)
+	err := r.db.QueryRowContext(ctx,
+		fmt.Sprintf("SELECT %s FROM techniques WHERE id = ?", techniqueColumns),
+		id).Scan(&technique.ID, &technique.Name, &technique.Description, &technique.Tactic, &platforms, &executors, &detection, &technique.IsSafe)
 
 	if err != nil {
 		return nil, err
@@ -105,10 +112,8 @@ func (r *TechniqueRepository) FindByID(ctx context.Context, id string) (*entity.
 
 // FindAll finds all techniques
 func (r *TechniqueRepository) FindAll(ctx context.Context) ([]*entity.Technique, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, tactic, platforms, executors, detection, is_safe
-		FROM techniques ORDER BY id
-	`)
+	rows, err := r.db.QueryContext(ctx,
+		fmt.Sprintf("SELECT %s FROM techniques ORDER BY id", techniqueColumns))
 	if err != nil {
 		return nil, err
 	}
@@ -119,10 +124,9 @@ func (r *TechniqueRepository) FindAll(ctx context.Context) ([]*entity.Technique,
 
 // FindByTactic finds techniques by tactic
 func (r *TechniqueRepository) FindByTactic(ctx context.Context, tactic entity.TacticType) ([]*entity.Technique, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, tactic, platforms, executors, detection, is_safe
-		FROM techniques WHERE tactic = ? ORDER BY id
-	`, tactic)
+	rows, err := r.db.QueryContext(ctx,
+		fmt.Sprintf("SELECT %s FROM techniques WHERE tactic = ? ORDER BY id", techniqueColumns),
+		tactic)
 	if err != nil {
 		return nil, err
 	}
@@ -133,10 +137,9 @@ func (r *TechniqueRepository) FindByTactic(ctx context.Context, tactic entity.Ta
 
 // FindByPlatform finds techniques by platform
 func (r *TechniqueRepository) FindByPlatform(ctx context.Context, platform string) ([]*entity.Technique, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, tactic, platforms, executors, detection, is_safe
-		FROM techniques WHERE platforms LIKE ? ORDER BY id
-	`, "%"+platform+"%")
+	rows, err := r.db.QueryContext(ctx,
+		fmt.Sprintf("SELECT %s FROM techniques WHERE platforms LIKE ? ORDER BY id", techniqueColumns),
+		"%"+platform+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -158,12 +161,43 @@ func (r *TechniqueRepository) ImportFromYAML(ctx context.Context, path string) e
 	}
 
 	for _, t := range techniques {
-		if err := r.Create(ctx, t); err != nil {
+		if err := r.upsert(ctx, t); err != nil {
 			return fmt.Errorf("failed to import technique %s: %w", t.ID, err)
 		}
 	}
 
 	return nil
+}
+
+// upsert inserts or updates a technique
+func (r *TechniqueRepository) upsert(ctx context.Context, technique *entity.Technique) error {
+	platforms, err := json.Marshal(technique.Platforms)
+	if err != nil {
+		return fmt.Errorf(errMarshalPlatforms, err)
+	}
+	executors, err := json.Marshal(technique.Executors)
+	if err != nil {
+		return fmt.Errorf(errMarshalExecutors, err)
+	}
+	detection, err := json.Marshal(technique.Detection)
+	if err != nil {
+		return fmt.Errorf(errMarshalDetection, err)
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO techniques (id, name, description, tactic, platforms, executors, detection, is_safe, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
+			description = excluded.description,
+			tactic = excluded.tactic,
+			platforms = excluded.platforms,
+			executors = excluded.executors,
+			detection = excluded.detection,
+			is_safe = excluded.is_safe
+	`, technique.ID, technique.Name, technique.Description, technique.Tactic, platforms, executors, detection, technique.IsSafe, time.Now())
+
+	return err
 }
 
 func (r *TechniqueRepository) scanTechniques(rows *sql.Rows) ([]*entity.Technique, error) {

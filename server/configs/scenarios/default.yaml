@@ -1,0 +1,92 @@
+- id: "scenario-full-discovery"
+  name: "Full Discovery"
+  description: "Complete system reconnaissance - enumerate system info, network, processes, users, and services."
+  tags:
+    - "discovery"
+    - "comprehensive"
+    - "safe"
+  author: "AutoStrike"
+  phases:
+    - name: "System & Network"
+      order: 1
+      techniques:
+        - "T1082"
+        - "T1016"
+        - "T1049"
+    - name: "Users & Processes"
+      order: 2
+      techniques:
+        - "T1087"
+        - "T1069"
+        - "T1057"
+    - name: "Services & Files"
+      order: 3
+      techniques:
+        - "T1007"
+        - "T1083"
+        - "T1018"
+
+- id: "scenario-quick-scan"
+  name: "Quick Scan"
+  description: "Fast 3-technique check for quick security validation."
+  tags:
+    - "quick"
+    - "safe"
+  author: "AutoStrike"
+  phases:
+    - name: "Basic Check"
+      order: 1
+      techniques:
+        - "T1082"
+        - "T1057"
+        - "T1016"
+
+- id: "scenario-windows"
+  name: "Windows Assessment"
+  description: "Windows-specific assessment including PowerShell execution and persistence checks."
+  tags:
+    - "windows"
+    - "safe"
+  author: "AutoStrike"
+  phases:
+    - name: "System Info"
+      order: 1
+      techniques:
+        - "T1082"
+        - "T1016"
+    - name: "Execution"
+      order: 2
+      techniques:
+        - "T1059.001"
+        - "T1059.003"
+    - name: "Persistence"
+      order: 3
+      techniques:
+        - "T1053.005"
+        - "T1547.001"
+
+- id: "scenario-linux"
+  name: "Linux Assessment"
+  description: "Linux-specific assessment with bash execution and user enumeration."
+  tags:
+    - "linux"
+    - "safe"
+  author: "AutoStrike"
+  phases:
+    - name: "System & Network"
+      order: 1
+      techniques:
+        - "T1082"
+        - "T1016"
+        - "T1049"
+    - name: "Users & Groups"
+      order: 2
+      techniques:
+        - "T1087"
+        - "T1069"
+    - name: "Processes & Services"
+      order: 3
+      techniques:
+        - "T1057"
+        - "T1007"
+        - "T1059.004"

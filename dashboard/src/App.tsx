@@ -6,7 +6,9 @@ import Agents from './pages/Agents';
 import Techniques from './pages/Techniques';
 import Scenarios from './pages/Scenarios';
 import Executions from './pages/Executions';
+import ExecutionDetails from './pages/ExecutionDetails';
 import Settings from './pages/Settings';
+import Matrix from './pages/Matrix';
 
 /**
  * Root application component.
@@ -23,8 +25,10 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/techniques" element={<Techniques />} />
+          <Route path="/matrix" element={<Matrix />} />
           <Route path="/scenarios" element={<Scenarios />} />
           <Route path="/executions" element={<Executions />} />
+          <Route path="/executions/:id" element={<ExecutionDetails />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Layout>

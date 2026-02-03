@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import Executions from './Executions';
 import { executionApi } from '../lib/api';
 
@@ -53,7 +54,11 @@ const createTestQueryClient = () =>
 function renderWithClient(ui: React.ReactElement) {
   const testQueryClient = createTestQueryClient();
   return render(
-    <QueryClientProvider client={testQueryClient}>{ui}</QueryClientProvider>
+    <QueryClientProvider client={testQueryClient}>
+      <MemoryRouter>
+        {ui}
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 }
 

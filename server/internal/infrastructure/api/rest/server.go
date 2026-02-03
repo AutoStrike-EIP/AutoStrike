@@ -1,7 +1,10 @@
 package rest
 
 import (
+	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"autostrike/internal/application"
 	"autostrike/internal/infrastructure/http/handlers"
@@ -20,18 +23,41 @@ type Server struct {
 
 // ServerConfig contains server configuration options
 type ServerConfig struct {
-	JWTSecret      string
-	AgentSecret    string
-	EnableAuth     bool
+	JWTSecret     string
+	AgentSecret   string
+	EnableAuth    bool
+	DashboardPath string // Path to dashboard dist folder (empty = disabled)
 }
 
 // NewServerConfig creates a server config from environment variables
+// Auth is automatically enabled when JWT_SECRET is set, disabled otherwise.
+// This allows easy development (no secret = no auth) while being secure in production.
+// Can be explicitly controlled with ENABLE_AUTH=true/false.
 func NewServerConfig() *ServerConfig {
-	enableAuth := os.Getenv("ENABLE_AUTH") != "false" // Enabled by default
+	jwtSecret := os.Getenv("JWT_SECRET")
+	enableAuthEnv := os.Getenv("ENABLE_AUTH")
+
+	// Default: auth enabled only if JWT_SECRET is provided
+	enableAuth := jwtSecret != ""
+
+	// Allow explicit override via ENABLE_AUTH
+	if enableAuthEnv == "true" {
+		enableAuth = true
+	} else if enableAuthEnv == "false" {
+		enableAuth = false
+	}
+
+	// Default dashboard path to ../dashboard/dist relative to working directory
+	dashboardPath := os.Getenv("DASHBOARD_PATH")
+	if dashboardPath == "" {
+		dashboardPath = "../dashboard/dist"
+	}
+
 	return &ServerConfig{
-		JWTSecret:   os.Getenv("JWT_SECRET"),
-		AgentSecret: os.Getenv("AGENT_SECRET"),
-		EnableAuth:  enableAuth,
+		JWTSecret:     jwtSecret,
+		AgentSecret:   os.Getenv("AGENT_SECRET"),
+		EnableAuth:    enableAuth,
+		DashboardPath: dashboardPath,
 	}
 }
 
@@ -57,6 +83,12 @@ func NewServerWithConfig(
 	logger *zap.Logger,
 	config *ServerConfig,
 ) *Server {
+	// Fail fast if auth is explicitly enabled but JWT_SECRET is missing
+	if config.EnableAuth && config.JWTSecret == "" {
+		logger.Fatal("Configuration error: ENABLE_AUTH=true but JWT_SECRET is not set. " +
+			"Either set JWT_SECRET or set ENABLE_AUTH=false for development mode.")
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
@@ -73,6 +105,7 @@ func NewServerWithConfig(
 	// WebSocket routes (uses agent auth)
 	if hub != nil {
 		wsHandler := handlers.NewWebSocketHandler(hub, agentService, logger)
+		wsHandler.SetExecutionService(executionService)
 		wsHandler.RegisterRoutes(router)
 	}
 
@@ -108,12 +141,56 @@ func NewServerWithConfig(
 			executionHandler = handlers.NewExecutionHandler(executionService)
 		}
 		executionHandler.RegisterRoutes(api)
+
+		// Scenarios
+		scenarioHandler := handlers.NewScenarioHandler(scenarioService)
+		scenarioHandler.RegisterRoutes(api)
+	}
+
+	// Serve dashboard static files if path is configured
+	if config.DashboardPath != "" {
+		setupDashboardRoutes(router, config.DashboardPath, logger)
 	}
 
 	return &Server{
 		router: router,
 		logger: logger,
 	}
+}
+
+// setupDashboardRoutes configures static file serving for the dashboard SPA
+func setupDashboardRoutes(router *gin.Engine, dashboardPath string, logger *zap.Logger) {
+	absPath, err := filepath.Abs(dashboardPath)
+	if err != nil {
+		logger.Warn("Invalid dashboard path", zap.String("path", dashboardPath), zap.Error(err))
+		return
+	}
+
+	indexFile := filepath.Join(absPath, "index.html")
+	if _, err := os.Stat(indexFile); os.IsNotExist(err) {
+		logger.Warn("Dashboard index.html not found", zap.String("path", indexFile))
+		return
+	}
+
+	// Serve static assets
+	router.Static("/assets", filepath.Join(absPath, "assets"))
+
+	// Serve other static files at root
+	router.StaticFile("/vite.svg", filepath.Join(absPath, "vite.svg"))
+	router.StaticFile("/favicon.ico", filepath.Join(absPath, "favicon.ico"))
+
+	// SPA fallback: serve index.html for all other routes
+	router.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		// Don't serve index.html for API or WebSocket routes
+		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/ws/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "endpoint not found"})
+			return
+		}
+		c.File(indexFile)
+	})
+
+	logger.Info("Dashboard serving enabled", zap.String("path", absPath))
 }
 
 // Run starts the HTTP server

@@ -20,7 +20,7 @@ func (s *ScoreCalculator) CalculateScore(results []*entity.ExecutionResult) *ent
 	}
 
 	if len(results) == 0 {
-		score.Overall = 100.0 // No attacks = perfect score (or undefined?)
+		score.Overall = 0 // No tests = no meaningful score
 		return score
 	}
 

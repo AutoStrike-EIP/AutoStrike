@@ -86,7 +86,16 @@ func (m *mockAgentRepo) FindAll(ctx context.Context) ([]*entity.Agent, error) {
 	return result, nil
 }
 func (m *mockAgentRepo) FindByStatus(ctx context.Context, status entity.AgentStatus) ([]*entity.Agent, error) {
-	return nil, nil
+	if m.findErr != nil {
+		return nil, m.findErr
+	}
+	result := make([]*entity.Agent, 0)
+	for _, a := range m.agents {
+		if a.Status == status {
+			result = append(result, a)
+		}
+	}
+	return result, nil
 }
 func (m *mockAgentRepo) FindByPlatform(ctx context.Context, platform string) ([]*entity.Agent, error) {
 	return nil, nil
@@ -341,6 +350,75 @@ func TestAgentHandler_Heartbeat_Error(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestAgentHandler_ListAgents_AllTrue(t *testing.T) {
+	repo := newMockAgentRepo()
+	repo.agents["paw1"] = &entity.Agent{Paw: "paw1", Hostname: "host1", Status: entity.AgentOnline}
+	repo.agents["paw2"] = &entity.Agent{Paw: "paw2", Hostname: "host2", Status: entity.AgentOffline}
+	svc := application.NewAgentService(repo)
+	handler := NewAgentHandler(svc)
+
+	router := gin.New()
+	router.GET("/agents", handler.ListAgents)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/agents?all=true", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	var agents []*entity.Agent
+	if err := json.Unmarshal(w.Body.Bytes(), &agents); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if len(agents) != 2 {
+		t.Errorf("Expected 2 agents, got %d", len(agents))
+	}
+}
+
+func TestAgentHandler_ListAgents_AllTrue_Error(t *testing.T) {
+	repo := newMockAgentRepo()
+	repo.findErr = errors.New("db error")
+	svc := application.NewAgentService(repo)
+	handler := NewAgentHandler(svc)
+
+	router := gin.New()
+	router.GET("/agents", handler.ListAgents)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/agents?all=true", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestAgentHandler_ListAgents_NilAgents(t *testing.T) {
+	// Test that nil agents are converted to empty array
+	repo := newMockAgentRepo()
+	// Empty repo returns nil slice
+	svc := application.NewAgentService(repo)
+	handler := NewAgentHandler(svc)
+
+	router := gin.New()
+	router.GET("/agents", handler.ListAgents)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/agents", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Should return [] not null
+	if w.Body.String() != "[]" {
+		t.Errorf("Expected empty array '[]', got '%s'", w.Body.String())
 	}
 }
 
@@ -659,6 +737,75 @@ func TestTechniqueHandler_ImportTechniques_Error(t *testing.T) {
 	}
 }
 
+func TestTechniqueHandler_ListTechniques_NilTechniques(t *testing.T) {
+	repo := newMockTechniqueRepo()
+	// Empty repo returns nil slice
+	svc := application.NewTechniqueService(repo)
+	handler := NewTechniqueHandler(svc)
+
+	router := gin.New()
+	router.GET("/techniques", handler.ListTechniques)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/techniques", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Should return [] not null
+	if w.Body.String() != "[]" {
+		t.Errorf("Expected empty array '[]', got '%s'", w.Body.String())
+	}
+}
+
+func TestTechniqueHandler_GetByTactic_NilTechniques(t *testing.T) {
+	repo := newMockTechniqueRepo()
+	// Empty repo returns nil slice for tactic
+	svc := application.NewTechniqueService(repo)
+	handler := NewTechniqueHandler(svc)
+
+	router := gin.New()
+	router.GET("/techniques/tactic/:tactic", handler.GetByTactic)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/techniques/tactic/nonexistent", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Should return [] not null
+	if w.Body.String() != "[]" {
+		t.Errorf("Expected empty array '[]', got '%s'", w.Body.String())
+	}
+}
+
+func TestTechniqueHandler_GetByPlatform_NilTechniques(t *testing.T) {
+	repo := newMockTechniqueRepo()
+	// Empty repo returns nil slice for platform
+	svc := application.NewTechniqueService(repo)
+	handler := NewTechniqueHandler(svc)
+
+	router := gin.New()
+	router.GET("/techniques/platform/:platform", handler.GetByPlatform)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/techniques/platform/nonexistent", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Should return [] not null
+	if w.Body.String() != "[]" {
+		t.Errorf("Expected empty array '[]', got '%s'", w.Body.String())
+	}
+}
+
 // Execution mock repos
 type mockResultRepo struct {
 	executions     map[string]*entity.Execution
@@ -724,6 +871,16 @@ func (m *mockResultRepo) CreateResult(ctx context.Context, r *entity.ExecutionRe
 func (m *mockResultRepo) UpdateResult(ctx context.Context, r *entity.ExecutionResult) error {
 	return nil
 }
+func (m *mockResultRepo) FindResultByID(ctx context.Context, id string) (*entity.ExecutionResult, error) {
+	for _, results := range m.results {
+		for _, r := range results {
+			if r.ID == id {
+				return r, nil
+			}
+		}
+	}
+	return &entity.ExecutionResult{ID: id}, nil
+}
 func (m *mockResultRepo) FindResultsByExecution(ctx context.Context, executionID string) ([]*entity.ExecutionResult, error) {
 	if m.findResultsErr != nil {
 		return nil, m.findResultsErr
@@ -763,6 +920,7 @@ func (m *mockScenarioRepo) FindAll(ctx context.Context) ([]*entity.Scenario, err
 func (m *mockScenarioRepo) FindByTag(ctx context.Context, tag string) ([]*entity.Scenario, error) {
 	return nil, nil
 }
+func (m *mockScenarioRepo) ImportFromYAML(ctx context.Context, path string) error { return nil }
 
 // Execution Handler Tests
 func TestNewExecutionHandler(t *testing.T) {
@@ -1020,7 +1178,8 @@ func TestExecutionHandler_CompleteExecution(t *testing.T) {
 	}
 	resultRepo.results["e1"] = []*entity.ExecutionResult{}
 
-	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	calculator := service.NewScoreCalculator()
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, calculator)
 	handler := NewExecutionHandler(svc)
 
 	router := gin.New()
@@ -1248,5 +1407,177 @@ func TestExecutionHandler_BroadcastExecutionEvent_WithHub(t *testing.T) {
 	handler.broadcastExecutionEvent("test_event", "exec-123", map[string]string{"status": "test"})
 
 	// Small delay to let broadcast process
+	time.Sleep(10 * time.Millisecond)
+}
+
+func TestExecutionHandler_ListExecutions_NilResults(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	// Empty repo returns nil slice
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.GET("/executions", handler.ListExecutions)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/executions", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Should return [] not null
+	if w.Body.String() != "[]" {
+		t.Errorf("Expected empty array '[]', got '%s'", w.Body.String())
+	}
+}
+
+func TestExecutionHandler_GetResults_NilResults(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	// No results for this execution ID
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.GET("/executions/:id/results", handler.GetResults)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/executions/e1/results", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Should return [] not null
+	if w.Body.String() != "[]" {
+		t.Errorf("Expected empty array '[]', got '%s'", w.Body.String())
+	}
+}
+
+func TestExecutionHandler_StartExecution_EmptyAgentPaws(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc)
+
+	router := gin.New()
+	router.POST("/executions", handler.StartExecution)
+
+	body := StartExecutionRequest{
+		ScenarioID: "s1",
+		AgentPaws:  []string{}, // Empty
+		SafeMode:   true,
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestExecutionHandler_DispatchTasksToAgents_NilHub(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+	handler := NewExecutionHandler(svc) // No hub
+
+	// This should not panic
+	tasks := []application.TaskDispatchInfo{
+		{ResultID: "r1", AgentPaw: "paw1", TechniqueID: "T1082", Command: "echo test"},
+	}
+	handler.dispatchTasksToAgents(tasks)
+}
+
+func TestExecutionHandler_DispatchTasksToAgents_WithHub(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	go hub.Run()
+
+	handler := NewExecutionHandlerWithHub(svc, hub)
+
+	// Dispatch to non-existent agent - should mark as failed
+	tasks := []application.TaskDispatchInfo{
+		{ResultID: "r1", AgentPaw: "nonexistent", TechniqueID: "T1082", Command: "echo test"},
+	}
+	handler.dispatchTasksToAgents(tasks)
+
+	// Give time for processing
+	time.Sleep(10 * time.Millisecond)
+}
+
+func TestExecutionHandler_MarkResultAsFailed_NilService(t *testing.T) {
+	// Handler with nil service should not panic
+	handler := &ExecutionHandler{service: nil, hub: nil}
+	handler.markResultAsFailed("result-123", "test reason")
+}
+
+func TestExecutionHandler_CompleteExecution_WithHub(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:        "e1",
+		Status:    entity.ExecutionRunning,
+		StartedAt: time.Now(),
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{}
+
+	calculator := service.NewScoreCalculator()
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, calculator)
+
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	go hub.Run()
+
+	handler := NewExecutionHandlerWithHub(svc, hub)
+
+	router := gin.New()
+	router.POST("/executions/:id/complete", handler.CompleteExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/e1/complete", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+}
+
+func TestExecutionHandler_StopExecution_WithHub(t *testing.T) {
+	resultRepo := newMockResultRepo()
+	resultRepo.executions["e1"] = &entity.Execution{
+		ID:        "e1",
+		Status:    entity.ExecutionRunning,
+		StartedAt: time.Now(),
+	}
+	resultRepo.results["e1"] = []*entity.ExecutionResult{}
+
+	svc := application.NewExecutionService(resultRepo, nil, nil, nil, nil, nil)
+
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	go hub.Run()
+
+	handler := NewExecutionHandlerWithHub(svc, hub)
+
+	router := gin.New()
+	router.POST("/executions/:id/stop", handler.StopExecution)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/executions/e1/stop", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
 	time.Sleep(10 * time.Millisecond)
 }

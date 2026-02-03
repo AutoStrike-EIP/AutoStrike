@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 
 	"autostrike/internal/application"
+	"autostrike/internal/domain/entity"
 	"autostrike/internal/infrastructure/websocket"
 
 	"github.com/gin-gonic/gin"
@@ -70,6 +72,10 @@ func (h *ExecutionHandler) ListExecutions(c *gin.Context) {
 		return
 	}
 
+	// Return empty array instead of null
+	if executions == nil {
+		executions = []*entity.Execution{}
+	}
 	c.JSON(http.StatusOK, executions)
 }
 
@@ -96,6 +102,10 @@ func (h *ExecutionHandler) GetResults(c *gin.Context) {
 		return
 	}
 
+	// Return empty array instead of null
+	if results == nil {
+		results = []*entity.ExecutionResult{}
+	}
 	c.JSON(http.StatusOK, results)
 }
 
@@ -114,16 +124,68 @@ func (h *ExecutionHandler) StartExecution(c *gin.Context) {
 		return
 	}
 
-	execution, err := h.service.StartExecution(c.Request.Context(), req.ScenarioID, req.AgentPaws, req.SafeMode)
+	// Validate that at least one agent is selected
+	if len(req.AgentPaws) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "at least one agent must be selected"})
+		return
+	}
+
+	result, err := h.service.StartExecution(c.Request.Context(), req.ScenarioID, req.AgentPaws, req.SafeMode)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Broadcast execution started event to all connected clients
-	h.broadcastExecutionEvent("execution_started", execution.ID, execution)
+	h.broadcastExecutionEvent("execution_started", result.Execution.ID, result.Execution)
 
-	c.JSON(http.StatusCreated, execution)
+	// Dispatch tasks to agents via WebSocket
+	h.dispatchTasksToAgents(result.Tasks)
+
+	c.JSON(http.StatusCreated, result.Execution)
+}
+
+// dispatchTasksToAgents sends task messages to the appropriate agents
+func (h *ExecutionHandler) dispatchTasksToAgents(tasks []application.TaskDispatchInfo) {
+	if h.hub == nil {
+		return
+	}
+
+	for _, task := range tasks {
+		taskMsg := map[string]interface{}{
+			"type": "task",
+			"payload": map[string]interface{}{
+				"id":           task.ResultID,
+				"technique_id": task.TechniqueID,
+				"command":      task.Command,
+				"executor":     task.Executor,
+				"timeout":      task.Timeout,
+				"cleanup":      task.Cleanup,
+			},
+		}
+
+		msgBytes, err := json.Marshal(taskMsg)
+		if err != nil {
+			// Mark result as failed if we can't serialize the message
+			h.markResultAsFailed(task.ResultID, "failed to serialize task message")
+			continue
+		}
+
+		if !h.hub.SendToAgent(task.AgentPaw, msgBytes) {
+			// Mark result as failed if agent is disconnected or channel is full
+			h.markResultAsFailed(task.ResultID, "agent disconnected or unavailable")
+		}
+	}
+}
+
+// markResultAsFailed marks a result as failed when dispatch fails
+func (h *ExecutionHandler) markResultAsFailed(resultID, reason string) {
+	if h.service == nil {
+		return
+	}
+	// Use background context since this may be called after the request ends
+	// Empty agent paw skips validation - this is internal server marking, not agent-reported
+	_ = h.service.UpdateResultByID(context.Background(), resultID, entity.StatusFailed, reason, -1, "")
 }
 
 // CompleteExecution marks an execution as completed

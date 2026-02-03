@@ -31,12 +31,25 @@ func (h *AgentHandler) RegisterRoutes(r *gin.RouterGroup) {
 	}
 }
 
-// ListAgents returns all agents
+// ListAgents returns agents (online only by default, use ?all=true for all)
 func (h *AgentHandler) ListAgents(c *gin.Context) {
-	agents, err := h.service.GetAllAgents(c.Request.Context())
+	var agents []*entity.Agent
+	var err error
+
+	if c.Query("all") == "true" {
+		agents, err = h.service.GetAllAgents(c.Request.Context())
+	} else {
+		agents, err = h.service.GetOnlineAgents(c.Request.Context())
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Return empty array instead of null
+	if agents == nil {
+		agents = []*entity.Agent{}
 	}
 
 	c.JSON(http.StatusOK, agents)

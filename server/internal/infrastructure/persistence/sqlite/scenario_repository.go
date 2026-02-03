@@ -5,9 +5,19 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"autostrike/internal/domain/entity"
+
+	"gopkg.in/yaml.v3"
+)
+
+// SQL column constants and error messages for scenarios
+const (
+	scenarioColumns       = "id, name, description, phases, tags, created_at, updated_at"
+	errMarshalPhases      = "failed to marshal phases: %w"
+	errMarshalTags        = "failed to marshal tags: %w"
 )
 
 // ScenarioRepository implements repository.ScenarioRepository using SQLite
@@ -24,11 +34,11 @@ func NewScenarioRepository(db *sql.DB) *ScenarioRepository {
 func (r *ScenarioRepository) Create(ctx context.Context, scenario *entity.Scenario) error {
 	phases, err := json.Marshal(scenario.Phases)
 	if err != nil {
-		return fmt.Errorf("failed to marshal phases: %w", err)
+		return fmt.Errorf(errMarshalPhases, err)
 	}
 	tags, err := json.Marshal(scenario.Tags)
 	if err != nil {
-		return fmt.Errorf("failed to marshal tags: %w", err)
+		return fmt.Errorf(errMarshalTags, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, `
@@ -43,11 +53,11 @@ func (r *ScenarioRepository) Create(ctx context.Context, scenario *entity.Scenar
 func (r *ScenarioRepository) Update(ctx context.Context, scenario *entity.Scenario) error {
 	phases, err := json.Marshal(scenario.Phases)
 	if err != nil {
-		return fmt.Errorf("failed to marshal phases: %w", err)
+		return fmt.Errorf(errMarshalPhases, err)
 	}
 	tags, err := json.Marshal(scenario.Tags)
 	if err != nil {
-		return fmt.Errorf("failed to marshal tags: %w", err)
+		return fmt.Errorf(errMarshalTags, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, `
@@ -69,10 +79,9 @@ func (r *ScenarioRepository) FindByID(ctx context.Context, id string) (*entity.S
 	scenario := &entity.Scenario{}
 	var phases, tags string
 
-	err := r.db.QueryRowContext(ctx, `
-		SELECT id, name, description, phases, tags, created_at, updated_at
-		FROM scenarios WHERE id = ?
-	`, id).Scan(&scenario.ID, &scenario.Name, &scenario.Description, &phases, &tags, &scenario.CreatedAt, &scenario.UpdatedAt)
+	err := r.db.QueryRowContext(ctx,
+		fmt.Sprintf("SELECT %s FROM scenarios WHERE id = ?", scenarioColumns),
+		id).Scan(&scenario.ID, &scenario.Name, &scenario.Description, &phases, &tags, &scenario.CreatedAt, &scenario.UpdatedAt)
 
 	if err != nil {
 		return nil, err
@@ -91,10 +100,8 @@ func (r *ScenarioRepository) FindByID(ctx context.Context, id string) (*entity.S
 
 // FindAll finds all scenarios
 func (r *ScenarioRepository) FindAll(ctx context.Context) ([]*entity.Scenario, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, phases, tags, created_at, updated_at
-		FROM scenarios ORDER BY updated_at DESC
-	`)
+	rows, err := r.db.QueryContext(ctx,
+		fmt.Sprintf("SELECT %s FROM scenarios ORDER BY updated_at DESC", scenarioColumns))
 	if err != nil {
 		return nil, err
 	}
@@ -105,10 +112,9 @@ func (r *ScenarioRepository) FindAll(ctx context.Context) ([]*entity.Scenario, e
 
 // FindByTag finds scenarios by tag
 func (r *ScenarioRepository) FindByTag(ctx context.Context, tag string) ([]*entity.Scenario, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, phases, tags, created_at, updated_at
-		FROM scenarios WHERE tags LIKE ? ORDER BY updated_at DESC
-	`, "%"+tag+"%")
+	rows, err := r.db.QueryContext(ctx,
+		fmt.Sprintf("SELECT %s FROM scenarios WHERE tags LIKE ? ORDER BY updated_at DESC", scenarioColumns),
+		"%"+tag+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -145,4 +151,57 @@ func (r *ScenarioRepository) scanScenarios(rows *sql.Rows) ([]*entity.Scenario, 
 	}
 
 	return scenarios, nil
+}
+
+// ImportFromYAML imports scenarios from a YAML file
+func (r *ScenarioRepository) ImportFromYAML(ctx context.Context, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var scenarios []*entity.Scenario
+	if err := yaml.Unmarshal(data, &scenarios); err != nil {
+		return fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	now := time.Now()
+	for _, s := range scenarios {
+		if s.CreatedAt.IsZero() {
+			s.CreatedAt = now
+		}
+		if s.UpdatedAt.IsZero() {
+			s.UpdatedAt = now
+		}
+		if err := r.upsert(ctx, s); err != nil {
+			return fmt.Errorf("failed to import scenario %s: %w", s.ID, err)
+		}
+	}
+
+	return nil
+}
+
+// upsert inserts or updates a scenario
+func (r *ScenarioRepository) upsert(ctx context.Context, scenario *entity.Scenario) error {
+	phases, err := json.Marshal(scenario.Phases)
+	if err != nil {
+		return fmt.Errorf(errMarshalPhases, err)
+	}
+	tags, err := json.Marshal(scenario.Tags)
+	if err != nil {
+		return fmt.Errorf(errMarshalTags, err)
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO scenarios (id, name, description, phases, tags, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
+			description = excluded.description,
+			phases = excluded.phases,
+			tags = excluded.tags,
+			updated_at = excluded.updated_at
+	`, scenario.ID, scenario.Name, scenario.Description, phases, tags, scenario.CreatedAt, scenario.UpdatedAt)
+
+	return err
 }

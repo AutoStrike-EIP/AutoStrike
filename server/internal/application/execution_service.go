@@ -41,49 +41,45 @@ func NewExecutionService(
 	}
 }
 
+// TaskDispatchInfo contains information needed to dispatch a task to an agent
+type TaskDispatchInfo struct {
+	ResultID    string
+	AgentPaw    string
+	TechniqueID string
+	Command     string
+	Executor    string
+	Timeout     int
+	Cleanup     string
+}
+
+// ExecutionWithTasks contains the execution and tasks to dispatch
+type ExecutionWithTasks struct {
+	Execution *entity.Execution
+	Tasks     []TaskDispatchInfo
+}
+
 // StartExecution starts a new scenario execution
 func (s *ExecutionService) StartExecution(
 	ctx context.Context,
 	scenarioID string,
 	agentPaws []string,
 	safeMode bool,
-) (*entity.Execution, error) {
-	// Load scenario
+) (*ExecutionWithTasks, error) {
 	scenario, err := s.scenarioRepo.FindByID(ctx, scenarioID)
 	if err != nil {
 		return nil, fmt.Errorf("scenario not found: %w", err)
 	}
 
-	// Load agents in batch (single query instead of N+1)
-	agents, err := s.agentRepo.FindByPaws(ctx, agentPaws)
+	agentMap, agents, err := s.loadAndValidateAgents(ctx, agentPaws)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load agents: %w", err)
+		return nil, err
 	}
 
-	// Build a map for quick lookup and validate all agents exist
-	agentMap := make(map[string]*entity.Agent, len(agents))
-	for _, agent := range agents {
-		agentMap[agent.Paw] = agent
-	}
-
-	// Verify all requested agents were found and are online
-	for _, paw := range agentPaws {
-		agent, found := agentMap[paw]
-		if !found {
-			return nil, fmt.Errorf("agent %s not found", paw)
-		}
-		if agent.Status != entity.AgentOnline {
-			return nil, fmt.Errorf("agent %s is not online", paw)
-		}
-	}
-
-	// Create execution plan
 	plan, err := s.orchestrator.PlanExecution(ctx, scenario, agents, safeMode)
 	if err != nil {
 		return nil, fmt.Errorf("failed to plan execution: %w", err)
 	}
 
-	// Create execution record
 	execution := &entity.Execution{
 		ID:         uuid.New().String(),
 		ScenarioID: scenarioID,
@@ -97,11 +93,58 @@ func (s *ExecutionService) StartExecution(
 		return nil, fmt.Errorf("failed to create execution: %w", err)
 	}
 
-	// Create pending results for each task
-	for _, task := range plan.Tasks {
+	tasks, err := s.createTasksForExecution(ctx, execution.ID, plan.Tasks, agentMap)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ExecutionWithTasks{
+		Execution: execution,
+		Tasks:     tasks,
+	}, nil
+}
+
+// loadAndValidateAgents loads agents and validates they exist and are online
+func (s *ExecutionService) loadAndValidateAgents(
+	ctx context.Context,
+	agentPaws []string,
+) (map[string]*entity.Agent, []*entity.Agent, error) {
+	agents, err := s.agentRepo.FindByPaws(ctx, agentPaws)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load agents: %w", err)
+	}
+
+	agentMap := make(map[string]*entity.Agent, len(agents))
+	for _, agent := range agents {
+		agentMap[agent.Paw] = agent
+	}
+
+	for _, paw := range agentPaws {
+		agent, found := agentMap[paw]
+		if !found {
+			return nil, nil, fmt.Errorf("agent %s not found", paw)
+		}
+		if agent.Status != entity.AgentOnline {
+			return nil, nil, fmt.Errorf("agent %s is not online", paw)
+		}
+	}
+
+	return agentMap, agents, nil
+}
+
+// createTasksForExecution creates task results and dispatch info for each planned task
+func (s *ExecutionService) createTasksForExecution(
+	ctx context.Context,
+	executionID string,
+	planTasks []service.PlannedTask,
+	agentMap map[string]*entity.Agent,
+) ([]TaskDispatchInfo, error) {
+	tasks := make([]TaskDispatchInfo, 0, len(planTasks))
+
+	for _, task := range planTasks {
 		result := &entity.ExecutionResult{
 			ID:          uuid.New().String(),
-			ExecutionID: execution.ID,
+			ExecutionID: executionID,
 			TechniqueID: task.TechniqueID,
 			AgentPaw:    task.AgentPaw,
 			Status:      entity.StatusPending,
@@ -111,9 +154,53 @@ func (s *ExecutionService) StartExecution(
 		if err := s.resultRepo.CreateResult(ctx, result); err != nil {
 			return nil, fmt.Errorf("failed to create result: %w", err)
 		}
+
+		executor := s.determineExecutor(ctx, task.TechniqueID, agentMap[task.AgentPaw])
+
+		tasks = append(tasks, TaskDispatchInfo{
+			ResultID:    result.ID,
+			AgentPaw:    task.AgentPaw,
+			TechniqueID: task.TechniqueID,
+			Command:     task.Command,
+			Executor:    executor,
+			Timeout:     task.Timeout,
+			Cleanup:     task.Cleanup,
+		})
 	}
 
-	return execution, nil
+	return tasks, nil
+}
+
+// determineExecutor finds the appropriate executor for a technique on an agent
+func (s *ExecutionService) determineExecutor(ctx context.Context, techniqueID string, agent *entity.Agent) string {
+	if agent == nil {
+		return "sh"
+	}
+
+	technique, err := s.techniqueRepo.FindByID(ctx, techniqueID)
+	if err != nil || technique == nil {
+		// Return platform-appropriate fallback when technique lookup fails
+		return defaultExecutorForPlatform(agent.Platform)
+	}
+
+	if exec := technique.GetExecutorForPlatform(agent.Platform, agent.Executors); exec != nil {
+		return exec.Type
+	}
+
+	// No compatible executor found - return platform-appropriate fallback
+	return defaultExecutorForPlatform(agent.Platform)
+}
+
+// defaultExecutorForPlatform returns the default shell executor for a platform
+func defaultExecutorForPlatform(platform string) string {
+	switch platform {
+	case "windows":
+		return "cmd"
+	case "darwin":
+		return "bash"
+	default:
+		return "sh"
+	}
 }
 
 // UpdateResult updates an execution result
@@ -124,27 +211,85 @@ func (s *ExecutionService) UpdateResult(
 	output string,
 	detected bool,
 ) error {
-	results, err := s.resultRepo.FindResultsByExecution(ctx, resultID)
+	result, err := s.resultRepo.FindResultByID(ctx, resultID)
 	if err != nil {
 		return err
 	}
 
-	for _, result := range results {
-		if result.ID == resultID {
-			now := time.Now()
-			result.Status = status
-			result.Output = output
-			result.Detected = detected
-			result.CompletedAt = &now
-			return s.resultRepo.UpdateResult(ctx, result)
+	now := time.Now()
+	result.Status = status
+	result.Output = output
+	result.Detected = detected
+	result.CompletedAt = &now
+	return s.resultRepo.UpdateResult(ctx, result)
+}
+
+// UpdateResultByID updates a result by its ID with exit code
+// If agentPaw is provided, it validates that the result belongs to the specified agent
+func (s *ExecutionService) UpdateResultByID(
+	ctx context.Context,
+	resultID string,
+	status entity.ResultStatus,
+	output string,
+	exitCode int,
+	agentPaw string,
+) error {
+	result, err := s.resultRepo.FindResultByID(ctx, resultID)
+	if err != nil {
+		return fmt.Errorf("result not found: %w", err)
+	}
+
+	// Validate that the result belongs to the requesting agent
+	if agentPaw != "" && result.AgentPaw != agentPaw {
+		return fmt.Errorf("agent %s is not authorized to update result %s (belongs to %s)", agentPaw, resultID, result.AgentPaw)
+	}
+
+	executionID := result.ExecutionID
+
+	now := time.Now()
+	result.Status = status
+	result.Output = output
+	result.ExitCode = exitCode
+	result.CompletedAt = &now
+
+	if err := s.resultRepo.UpdateResult(ctx, result); err != nil {
+		return err
+	}
+
+	// Check if all results are completed and auto-complete execution
+	return s.checkAndCompleteExecution(ctx, executionID)
+}
+
+// checkAndCompleteExecution checks if all results are done and completes the execution
+func (s *ExecutionService) checkAndCompleteExecution(ctx context.Context, executionID string) error {
+	results, err := s.resultRepo.FindResultsByExecution(ctx, executionID)
+	if err != nil {
+		return nil // Don't fail the result update if we can't check
+	}
+
+	// Check if all results are completed (not pending or running)
+	allDone := true
+	for _, r := range results {
+		if r.Status == entity.StatusPending || r.Status == entity.StatusRunning {
+			allDone = false
+			break
 		}
 	}
 
-	return fmt.Errorf("result not found")
+	if allDone && len(results) > 0 {
+		// All tasks completed, mark execution as completed
+		return s.CompleteExecution(ctx, executionID)
+	}
+
+	return nil
 }
 
 // CompleteExecution marks an execution as completed and calculates score
 func (s *ExecutionService) CompleteExecution(ctx context.Context, executionID string) error {
+	if s.calculator == nil {
+		return fmt.Errorf("cannot complete execution: score calculator is not configured")
+	}
+
 	execution, err := s.resultRepo.FindExecutionByID(ctx, executionID)
 	if err != nil {
 		return err

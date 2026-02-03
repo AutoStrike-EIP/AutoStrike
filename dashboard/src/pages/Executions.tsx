@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PlayIcon, StopIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { executionApi } from '../lib/api';
@@ -110,6 +111,7 @@ function StopConfirmModal({ execution, onConfirm, onCancel, isLoading }: Readonl
  */
 export default function Executions() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [executionToStop, setExecutionToStop] = useState<Execution | null>(null);
 
   // Handle WebSocket messages for real-time updates
@@ -203,7 +205,11 @@ export default function Executions() {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {executions?.map((execution) => (
-              <tr key={execution.id} className="hover:bg-gray-50 cursor-pointer">
+              <tr
+                key={execution.id}
+                className="hover:bg-gray-50 cursor-pointer"
+                onClick={() => navigate(`/executions/${execution.id}`)}
+              >
                 <td className="px-6 py-4 whitespace-nowrap">
                   <p className="font-medium">{execution.scenario_id}</p>
                   <p className="text-xs text-gray-400">{execution.id.slice(0, 8)}...</p>

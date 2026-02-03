@@ -19,9 +19,9 @@ func TestScoreCalculator_CalculateScore(t *testing.T) {
 		wantTotal   int
 	}{
 		{
-			name:        "empty results returns 100",
+			name:        "empty results returns 0",
 			results:     []*entity.ExecutionResult{},
-			wantOverall: 100.0,
+			wantOverall: 0.0,
 			wantTotal:   0,
 		},
 		{

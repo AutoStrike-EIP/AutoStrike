@@ -27,7 +27,7 @@ AutoStrike is a **Breach and Attack Simulation (BAS)** platform for security tes
 **Single server on port 8443** serves:
 - Dashboard (static files from `dashboard/dist`)
 - REST API (`/api/v1/*`)
-- WebSocket (`/ws/*`)
+- WebSocket (`/ws/agent`, `/ws/dashboard`)
 - Health check (`/health`)
 
 ### Directory Structure
@@ -36,6 +36,8 @@ AutoStrike is a **Breach and Attack Simulation (BAS)** platform for security tes
 autostrike/
 ├── server/          # Go backend (Hexagonal Architecture)
 │   ├── cmd/         # Entry point
+│   ├── configs/     # YAML technique definitions
+│   │   └── techniques/  # discovery.yaml, execution.yaml, etc.
 │   ├── internal/
 │   │   ├── domain/      # Business logic (entities, services, interfaces)
 │   │   ├── application/ # Use cases (service orchestration)
@@ -45,10 +47,10 @@ autostrike/
 │   └── src/         # Client, executor, config, system info
 ├── dashboard/       # React frontend
 │   └── src/
-│       ├── components/
-│       ├── hooks/       # Custom React hooks (useWebSocket)
-│       ├── pages/
-│       └── lib/
+│       ├── components/  # MitreMatrix, RunExecutionModal, Layout, etc.
+│       ├── hooks/       # useWebSocket
+│       ├── pages/       # Dashboard, Agents, Techniques, Matrix, Scenarios, Executions, ExecutionDetails, Settings
+│       └── lib/         # API client
 ├── docs/            # MkDocs documentation
 └── scripts/         # Build and deployment scripts
 ```
@@ -57,9 +59,9 @@ autostrike/
 
 | Component | Technology |
 |-----------|------------|
-| **Server** | Go 1.21, Gin, SQLite, WebSocket |
-| **Agent** | Rust 1.83+, tokio, tokio-tungstenite |
-| **Dashboard** | React 18, TypeScript, TailwindCSS, Vite |
+| **Server** | Go 1.21+, Gin, SQLite, gorilla/websocket |
+| **Agent** | Rust 1.75+, tokio, tokio-tungstenite |
+| **Dashboard** | React 18, TypeScript, TailwindCSS, Vite, TanStack Query, Chart.js |
 | **Documentation** | MkDocs Material |
 
 ## Key Patterns
@@ -71,22 +73,28 @@ autostrike/
 - Dependencies flow INWARD toward domain
 
 ### Agent (Async Rust)
-- Exponential backoff for reconnection
-- Platform-specific command execution (PowerShell/bash)
+- Exponential backoff for reconnection (1s → 60s max)
+- Platform-specific command execution (PowerShell/cmd/bash/sh)
 - JSON-based WebSocket protocol
+- Heartbeat every 30 seconds
+
+### Dashboard (React)
+- TanStack Query for server state
+- WebSocket for real-time updates
+- Conditional polling as fallback
 
 ## Development Commands
 
 ```bash
 # Quick Start (recommended)
-make run        # Build and start everything on http://localhost:8443
+make run        # Build and start everything on https://localhost:8443
 make agent      # Connect an agent
 make stop       # Stop all services
 make logs       # View server logs
 
 # Server
 cd server && go build ./...
-cd server && go test ./...
+cd server && go test ./... -cover
 
 # Agent
 cd agent && cargo build --release
@@ -96,6 +104,8 @@ cd agent && cargo test
 cd dashboard && npm install
 cd dashboard && npm run build
 cd dashboard && npm test -- --run
+cd dashboard && npm run lint
+cd dashboard && npm run type-check
 
 # Full stack (Docker)
 docker compose up --build
@@ -110,23 +120,30 @@ Base URL: `https://localhost:8443/api/v1`
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/agents` | GET | List all agents |
+| `/health` | GET | Health check (returns `{"status": "ok"}`) |
+| `/agents` | GET | List agents (`?all=true` for offline too) |
 | `/agents/:paw` | GET | Get agent details |
-| `/techniques` | GET | List MITRE techniques |
+| `/agents` | POST | Register agent |
+| `/agents/:paw` | DELETE | Delete agent |
+| `/agents/:paw/heartbeat` | POST | Update last_seen |
+| `/techniques` | GET | List all techniques |
+| `/techniques/:id` | GET | Get technique by ID |
 | `/techniques/tactic/:tactic` | GET | Techniques by tactic |
-| `/techniques/coverage` | GET | Get MITRE coverage stats |
-| `/scenarios` | GET | List all scenarios |
-| `/scenarios/:id` | GET | Get scenario details |
+| `/techniques/platform/:platform` | GET | Techniques by platform |
+| `/techniques/coverage` | GET | MITRE coverage stats |
+| `/techniques/import` | POST | Import from YAML |
+| `/scenarios` | GET | List scenarios |
+| `/scenarios/:id` | GET | Get scenario |
 | `/scenarios/tag/:tag` | GET | Scenarios by tag |
 | `/scenarios` | POST | Create scenario |
 | `/scenarios/:id` | PUT | Update scenario |
 | `/scenarios/:id` | DELETE | Delete scenario |
-| `/executions` | GET | List all executions |
-| `/executions/:id` | GET | Get execution details |
+| `/executions` | GET | List executions (limit 50) |
+| `/executions/:id` | GET | Get execution |
 | `/executions` | POST | Start execution |
-| `/executions/:id/results` | GET | Get execution results |
-| `/executions/:id/stop` | POST | Stop running execution |
-| `/executions/:id/complete` | POST | Mark execution complete |
+| `/executions/:id/results` | GET | Get results |
+| `/executions/:id/stop` | POST | Stop execution |
+| `/executions/:id/complete` | POST | Complete execution |
 
 ## WebSocket Protocol
 
@@ -134,22 +151,38 @@ Base URL: `https://localhost:8443/api/v1`
 Connection: `wss://server:8443/ws/agent`
 
 ```json
-// Register
-{"type": "register", "payload": {"paw": "...", "hostname": "...", ...}}
+// Register (Agent → Server)
+{"type": "register", "payload": {"paw": "...", "hostname": "...", "platform": "...", "executors": [...]}}
 
-// Task
-{"type": "task", "payload": {"id": "...", "command": "...", "executor": "..."}}
+// Registered (Server → Agent)
+{"type": "registered", "payload": {"status": "ok", "paw": "..."}}
 
-// Result
-{"type": "task_result", "payload": {"task_id": "...", "success": true, ...}}
+// Heartbeat (Agent → Server, every 30s)
+{"type": "heartbeat", "payload": {"paw": "..."}}
+
+// Task (Server → Agent)
+{"type": "task", "payload": {"id": "...", "technique_id": "...", "command": "...", "executor": "...", "timeout": 300}}
+
+// Task Result (Agent → Server)
+{"type": "task_result", "payload": {"task_id": "...", "technique_id": "...", "success": true, "output": "...", "exit_code": 0}}
+
+// Task Ack (Server → Agent)
+{"type": "task_ack", "payload": {"task_id": "...", "status": "received"}}
 ```
 
 ### Dashboard ↔ Server
 Connection: `wss://server:8443/ws/dashboard`
 
 ```json
-// Server notifications (execution_cancelled, execution_completed, execution_started)
-{"type": "execution_cancelled", "payload": {"execution_id": "...", "data": {}}}
+// Server broadcasts to all dashboards
+{"type": "execution_started", "payload": {"execution_id": "...", "data": {...}}}
+{"type": "execution_completed", "payload": {"execution_id": "...", "data": {...}}}
+{"type": "execution_cancelled", "payload": {"execution_id": "...", "data": {...}}}
+
+// Dashboard can send ping
+{"type": "ping", "payload": {}}
+// Server responds with pong
+{"type": "pong", "payload": {}}
 ```
 
 ## Environment Variables
@@ -160,6 +193,8 @@ Connection: `wss://server:8443/ws/dashboard`
 - `JWT_SECRET` - JWT signing key (optional - auth disabled if not set)
 - `AGENT_SECRET` - Agent authentication secret
 - `ENABLE_AUTH` - Explicit auth override (`true`/`false`)
+- `ALLOWED_ORIGINS` - CORS origins (default: `localhost:3000,localhost:8443`)
+- `LOG_LEVEL` - Logging level (debug, info, warn, error)
 
 **Authentication behavior:**
 - `JWT_SECRET` not set → Auth **disabled** (development mode)
@@ -168,6 +203,18 @@ Connection: `wss://server:8443/ws/dashboard`
 ### Dashboard (.env) - Only for Vite dev server
 - `VITE_SERVER_URL` - Backend server URL
 - `VITE_API_BASE_URL` - API base path
+- `VITE_WS_HOST` - WebSocket host override
+
+## Available Techniques (15 total)
+
+| Tactic | Count | IDs |
+|--------|-------|-----|
+| Discovery | 9 | T1082, T1083, T1057, T1016, T1049, T1087, T1069, T1018, T1007 |
+| Execution | 3 | T1059.001, T1059.003, T1059.004 |
+| Persistence | 2 | T1053.005, T1547.001 |
+| Defense Evasion | 1 | T1070.004 |
+
+All techniques are **safe mode compatible** (non-destructive).
 
 ## Important Notes
 
@@ -178,14 +225,40 @@ Connection: `wss://server:8443/ws/dashboard`
 
 ## Testing
 
-Test coverage:
-- Server: Unit tests for services and handlers (`go test ./...`)
-- Agent: Unit tests in `executor.rs` (`cargo test`)
-- Dashboard: 180 tests (`npm run test`)
+**Test coverage (Phase 2):**
+- **Server**: 193+ tests
+  - application: 100%
+  - entity: 100%
+  - service: 99.2%
+  - handlers: 92.1%
+  - websocket: 91.3%
+  - middleware: 100%
+- **Agent**: 68 unit tests (`cargo test`)
+- **Dashboard**: 193 tests across 15 files (`npm test`)
+
+```bash
+# Run all tests
+cd server && go test ./... -cover
+cd agent && cargo test
+cd dashboard && npm test -- --run
+```
+
+## Security Score Formula
+
+```
+score = (blocked * 100 + detected * 50) / (total * 100) * 100
+```
+
+| Result | Points | Meaning |
+|--------|--------|---------|
+| Blocked | 100 | Attack prevented |
+| Detected | 50 | Attack seen but not stopped |
+| Success | 0 | Attack succeeded undetected |
 
 ## Contributing
 
 1. Follow hexagonal architecture for server changes
 2. Use `cargo fmt` and `cargo clippy` for Rust
-3. Use `npm run lint` for TypeScript
-4. Update documentation in `docs/` for user-facing changes
+3. Use `npm run lint` and `npm run type-check` for TypeScript
+4. Add tests for new functionality
+5. Update documentation in `docs/` for user-facing changes

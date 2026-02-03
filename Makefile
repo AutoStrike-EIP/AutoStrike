@@ -95,10 +95,10 @@ server-build-quick: ## Build server (quick, for run target)
 
 agent-build: ## Build the Rust agent
 	@echo "$(YELLOW)Building agent...$(RESET)"
-	cd agent && cargo build --release
+	cd agent && PATH="$$HOME/.cargo/bin:$$HOME/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin:$$PATH" cargo build --release
 
 agent-build-quick: ## Build agent (quick)
-	@cd agent && cargo build --release 2>/dev/null
+	@cd agent && PATH="$$HOME/.cargo/bin:$$HOME/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin:$$PATH" cargo build --release 2>/dev/null
 
 dashboard-build: ## Build the React dashboard
 	@echo "$(YELLOW)Building dashboard...$(RESET)"

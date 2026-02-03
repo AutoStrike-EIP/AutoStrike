@@ -94,3 +94,6 @@ temp/
 # ===== CSV Import =====
 *.csv
 !planning/jira-import-detailed.csv
+
+# ======== Local ========
+local/

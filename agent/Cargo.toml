@@ -2,6 +2,7 @@
 name = "autostrike-agent"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.93"
 authors = ["AutoStrike Team"]
 description = "AutoStrike BAS Agent - Executes MITRE ATT&CK techniques for security testing"
 

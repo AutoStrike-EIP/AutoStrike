@@ -89,6 +89,10 @@ func (m *testScenarioRepo) FindByTag(ctx context.Context, tag string) ([]*entity
 	return result, nil
 }
 
+func (m *testScenarioRepo) ImportFromYAML(ctx context.Context, path string) error {
+	return m.err
+}
+
 // testTechniqueRepo is a mock technique repository for validation
 type testTechniqueRepo struct {
 	techniques map[string]*entity.Technique
@@ -646,6 +650,9 @@ func (m *testScenarioRepoWithUpdateError) FindAll(ctx context.Context) ([]*entit
 }
 func (m *testScenarioRepoWithUpdateError) FindByTag(ctx context.Context, tag string) ([]*entity.Scenario, error) {
 	return nil, nil
+}
+func (m *testScenarioRepoWithUpdateError) ImportFromYAML(ctx context.Context, path string) error {
+	return nil
 }
 
 func TestScenarioHandler_UpdateScenario_ServiceError(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"autostrike/internal/application"
 	"autostrike/internal/domain/service"
@@ -79,9 +80,35 @@ func main() {
 	// Auto-import techniques from configs directory at startup
 	autoImportTechniques(techniqueService, logger)
 
+	// Auto-import scenarios from configs directory at startup
+	autoImportScenarios(scenarioService, logger)
+
 	// Initialize WebSocket hub
 	hub := websocket.NewHub(logger)
+
+	// Set callback to mark agents offline when they disconnect
+	hub.SetOnAgentDisconnect(func(paw string) {
+		ctx := context.Background()
+		if err := agentService.MarkAgentOffline(ctx, paw); err != nil {
+			logger.Warn("Failed to mark agent offline", zap.String("paw", paw), zap.Error(err))
+		} else {
+			logger.Info("Agent marked offline", zap.String("paw", paw))
+		}
+	})
+
 	go hub.Run()
+
+	// Start background job to clean up stale agents (every 60 seconds)
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx := context.Background()
+			if err := agentService.CheckStaleAgents(ctx, 2*time.Minute); err != nil {
+				logger.Warn("Failed to check stale agents", zap.Error(err))
+			}
+		}
+	}()
 
 	// Initialize HTTP server
 	server := rest.NewServer(
@@ -133,6 +160,29 @@ func autoImportTechniques(service *application.TechniqueService, logger *zap.Log
 
 	if imported > 0 {
 		logger.Info("Auto-imported technique files", zap.Int("count", imported))
+	}
+}
+
+func autoImportScenarios(service *application.ScenarioService, logger *zap.Logger) {
+	// Import scenarios from all YAML files in configs/scenarios
+	paths := []string{
+		"./configs/scenarios/default.yaml",
+	}
+
+	imported := 0
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			if err := service.ImportScenarios(context.Background(), path); err != nil {
+				logger.Warn("Failed to import scenarios", zap.String("path", path), zap.Error(err))
+			} else {
+				imported++
+				logger.Info("Imported scenarios", zap.String("path", path))
+			}
+		}
+	}
+
+	if imported > 0 {
+		logger.Info("Auto-imported scenario files", zap.Int("count", imported))
 	}
 }
 

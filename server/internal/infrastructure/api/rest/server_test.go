@@ -53,6 +53,7 @@ func (m *mockScenarioRepo) FindAll(ctx context.Context) ([]*entity.Scenario, err
 func (m *mockScenarioRepo) FindByTag(ctx context.Context, tag string) ([]*entity.Scenario, error) {
 	return []*entity.Scenario{}, nil
 }
+func (m *mockScenarioRepo) ImportFromYAML(ctx context.Context, path string) error { return nil }
 
 type mockTechniqueRepo struct{}
 
@@ -99,6 +100,9 @@ func (m *mockResultRepo) CreateResult(ctx context.Context, result *entity.Execut
 }
 func (m *mockResultRepo) UpdateResult(ctx context.Context, result *entity.ExecutionResult) error {
 	return nil
+}
+func (m *mockResultRepo) FindResultByID(ctx context.Context, id string) (*entity.ExecutionResult, error) {
+	return &entity.ExecutionResult{ID: id}, nil
 }
 func (m *mockResultRepo) FindResultsByExecution(ctx context.Context, executionID string) ([]*entity.ExecutionResult, error) {
 	return []*entity.ExecutionResult{}, nil

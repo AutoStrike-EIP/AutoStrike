@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"autostrike/internal/domain/entity"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ScenarioRepository implements repository.ScenarioRepository using SQLite
@@ -145,4 +148,57 @@ func (r *ScenarioRepository) scanScenarios(rows *sql.Rows) ([]*entity.Scenario, 
 	}
 
 	return scenarios, nil
+}
+
+// ImportFromYAML imports scenarios from a YAML file
+func (r *ScenarioRepository) ImportFromYAML(ctx context.Context, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var scenarios []*entity.Scenario
+	if err := yaml.Unmarshal(data, &scenarios); err != nil {
+		return fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	now := time.Now()
+	for _, s := range scenarios {
+		if s.CreatedAt.IsZero() {
+			s.CreatedAt = now
+		}
+		if s.UpdatedAt.IsZero() {
+			s.UpdatedAt = now
+		}
+		if err := r.upsert(ctx, s); err != nil {
+			return fmt.Errorf("failed to import scenario %s: %w", s.ID, err)
+		}
+	}
+
+	return nil
+}
+
+// upsert inserts or updates a scenario
+func (r *ScenarioRepository) upsert(ctx context.Context, scenario *entity.Scenario) error {
+	phases, err := json.Marshal(scenario.Phases)
+	if err != nil {
+		return fmt.Errorf("failed to marshal phases: %w", err)
+	}
+	tags, err := json.Marshal(scenario.Tags)
+	if err != nil {
+		return fmt.Errorf("failed to marshal tags: %w", err)
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO scenarios (id, name, description, phases, tags, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
+			description = excluded.description,
+			phases = excluded.phases,
+			tags = excluded.tags,
+			updated_at = excluded.updated_at
+	`, scenario.ID, scenario.Name, scenario.Description, phases, tags, scenario.CreatedAt, scenario.UpdatedAt)
+
+	return err
 }

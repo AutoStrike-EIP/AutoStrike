@@ -86,7 +86,16 @@ func (m *mockAgentRepo) FindAll(ctx context.Context) ([]*entity.Agent, error) {
 	return result, nil
 }
 func (m *mockAgentRepo) FindByStatus(ctx context.Context, status entity.AgentStatus) ([]*entity.Agent, error) {
-	return nil, nil
+	if m.findErr != nil {
+		return nil, m.findErr
+	}
+	result := make([]*entity.Agent, 0)
+	for _, a := range m.agents {
+		if a.Status == status {
+			result = append(result, a)
+		}
+	}
+	return result, nil
 }
 func (m *mockAgentRepo) FindByPlatform(ctx context.Context, platform string) ([]*entity.Agent, error) {
 	return nil, nil
@@ -724,6 +733,16 @@ func (m *mockResultRepo) CreateResult(ctx context.Context, r *entity.ExecutionRe
 func (m *mockResultRepo) UpdateResult(ctx context.Context, r *entity.ExecutionResult) error {
 	return nil
 }
+func (m *mockResultRepo) FindResultByID(ctx context.Context, id string) (*entity.ExecutionResult, error) {
+	for _, results := range m.results {
+		for _, r := range results {
+			if r.ID == id {
+				return r, nil
+			}
+		}
+	}
+	return &entity.ExecutionResult{ID: id}, nil
+}
 func (m *mockResultRepo) FindResultsByExecution(ctx context.Context, executionID string) ([]*entity.ExecutionResult, error) {
 	if m.findResultsErr != nil {
 		return nil, m.findResultsErr
@@ -763,6 +782,7 @@ func (m *mockScenarioRepo) FindAll(ctx context.Context) ([]*entity.Scenario, err
 func (m *mockScenarioRepo) FindByTag(ctx context.Context, tag string) ([]*entity.Scenario, error) {
 	return nil, nil
 }
+func (m *mockScenarioRepo) ImportFromYAML(ctx context.Context, path string) error { return nil }
 
 // Execution Handler Tests
 func TestNewExecutionHandler(t *testing.T) {

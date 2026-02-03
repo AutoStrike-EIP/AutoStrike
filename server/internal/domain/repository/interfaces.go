@@ -39,6 +39,7 @@ type ScenarioRepository interface {
 	FindByID(ctx context.Context, id string) (*entity.Scenario, error)
 	FindAll(ctx context.Context) ([]*entity.Scenario, error)
 	FindByTag(ctx context.Context, tag string) ([]*entity.Scenario, error)
+	ImportFromYAML(ctx context.Context, path string) error
 }
 
 // ResultRepository defines the interface for execution result persistence
@@ -51,6 +52,7 @@ type ResultRepository interface {
 
 	CreateResult(ctx context.Context, result *entity.ExecutionResult) error
 	UpdateResult(ctx context.Context, result *entity.ExecutionResult) error
+	FindResultByID(ctx context.Context, id string) (*entity.ExecutionResult, error)
 	FindResultsByExecution(ctx context.Context, executionID string) ([]*entity.ExecutionResult, error)
 	FindResultsByTechnique(ctx context.Context, techniqueID string) ([]*entity.ExecutionResult, error)
 }

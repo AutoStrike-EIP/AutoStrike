@@ -80,6 +80,10 @@ func (m *mockScenarioRepo) FindByTag(ctx context.Context, tag string) ([]*entity
 	return result, nil
 }
 
+func (m *mockScenarioRepo) ImportFromYAML(ctx context.Context, path string) error {
+	return m.err
+}
+
 func TestNewScenarioService(t *testing.T) {
 	scenarioRepo := newMockScenarioRepo()
 	techRepo := newMockTechniqueRepo()

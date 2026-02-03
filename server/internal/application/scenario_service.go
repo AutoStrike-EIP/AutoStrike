@@ -89,6 +89,11 @@ func (s *ScenarioService) DeleteScenario(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
 }
 
+// ImportScenarios imports scenarios from YAML file
+func (s *ScenarioService) ImportScenarios(ctx context.Context, path string) error {
+	return s.repo.ImportFromYAML(ctx, path)
+}
+
 // ValidationError represents validation errors
 type ValidationError struct {
 	Errors []string

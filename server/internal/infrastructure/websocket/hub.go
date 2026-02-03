@@ -6,15 +6,19 @@ import (
 	"go.uber.org/zap"
 )
 
+// AgentDisconnectCallback is called when an agent disconnects
+type AgentDisconnectCallback func(paw string)
+
 // Hub manages WebSocket connections
 type Hub struct {
-	clients    map[*Client]bool
-	agents     map[string]*Client
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	mu         sync.RWMutex
-	logger     *zap.Logger
+	clients           map[*Client]bool
+	agents            map[string]*Client
+	broadcast         chan []byte
+	register          chan *Client
+	unregister        chan *Client
+	mu                sync.RWMutex
+	logger            *zap.Logger
+	onAgentDisconnect AgentDisconnectCallback
 }
 
 // NewHub creates a new WebSocket hub
@@ -61,16 +65,21 @@ func (h *Hub) handleRegister(client *Client) {
 // handleUnregister handles client unregistration with proper mutex handling
 func (h *Hub) handleUnregister(client *Client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
+	paw := ""
 	if _, ok := h.clients[client]; ok {
 		delete(h.clients, client)
-		paw := client.GetAgentPaw()
+		paw = client.GetAgentPaw()
 		if paw != "" {
 			delete(h.agents, paw)
 			h.logger.Info("Agent disconnected", zap.String("paw", paw))
 		}
 		close(client.send)
+	}
+	h.mu.Unlock()
+
+	// Call disconnect callback outside of lock to avoid deadlock
+	if paw != "" && h.onAgentDisconnect != nil {
+		h.onAgentDisconnect(paw)
 	}
 }
 
@@ -135,6 +144,15 @@ func (h *Hub) IsAgentConnected(paw string) bool {
 	return ok
 }
 
+// RegisterAgent registers an agent with its paw after initial connection
+func (h *Hub) RegisterAgent(paw string, client *Client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.agents[paw] = client
+	h.logger.Info("Agent registered with paw", zap.String("paw", paw))
+}
+
 // Register adds a client to the hub
 func (h *Hub) Register(client *Client) {
 	h.register <- client
@@ -143,4 +161,9 @@ func (h *Hub) Register(client *Client) {
 // Unregister removes a client from the hub
 func (h *Hub) Unregister(client *Client) {
 	h.unregister <- client
+}
+
+// SetOnAgentDisconnect sets the callback for agent disconnection
+func (h *Hub) SetOnAgentDisconnect(callback AgentDisconnectCallback) {
+	h.onAgentDisconnect = callback
 }

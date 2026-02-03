@@ -613,3 +613,179 @@ func TestClient_WritePump_ChannelClosed(t *testing.T) {
 
 	clientConn.Close()
 }
+
+func TestClient_sendPing(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+
+	pingReceived := make(chan bool, 1)
+
+	server, wsURL := createTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		conn, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		conn.SetPingHandler(func(appData string) error {
+			pingReceived <- true
+			return nil
+		})
+		// Keep reading to handle pings
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+		}
+	})
+	defer server.Close()
+
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer clientConn.Close()
+
+	client := NewClient(hub, clientConn, "ping-test", logger)
+
+	// Call sendPing
+	result := client.sendPing()
+	if !result {
+		t.Error("sendPing returned false")
+	}
+
+	// Wait for ping to be received
+	select {
+	case <-pingReceived:
+		// Success
+	case <-time.After(1 * time.Second):
+		t.Error("Ping was not received by server")
+	}
+}
+
+func TestClient_sendPing_ClosedConnection(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+
+	server, wsURL := createTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		conn, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		// Keep connection open briefly
+		time.Sleep(50 * time.Millisecond)
+		conn.Close()
+	})
+	defer server.Close()
+
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+
+	client := NewClient(hub, clientConn, "ping-test", logger)
+
+	// Close client side connection to ensure ping fails
+	clientConn.Close()
+
+	// sendPing should return false on closed connection
+	result := client.sendPing()
+	if result {
+		t.Error("sendPing should return false on closed connection")
+	}
+}
+
+func TestClient_writeMessageWithQueue(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+
+	receivedMsgs := make(chan []byte, 10)
+
+	server, wsURL := createTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		conn, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		for {
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			receivedMsgs <- data
+		}
+	})
+	defer server.Close()
+
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer clientConn.Close()
+
+	client := NewClient(hub, clientConn, "queue-test", logger)
+
+	// Queue some messages first
+	client.send <- []byte(`{"type":"queued1"}`)
+	client.send <- []byte(`{"type":"queued2"}`)
+
+	// Set write deadline
+	_ = clientConn.SetWriteDeadline(time.Now().Add(writeWait))
+
+	// Write first message with queue
+	result := client.writeMessageWithQueue([]byte(`{"type":"first"}`))
+	if !result {
+		t.Error("writeMessageWithQueue returned false")
+	}
+
+	// Collect received messages
+	received := 0
+	timeout := time.After(2 * time.Second)
+	for received < 3 {
+		select {
+		case <-receivedMsgs:
+			received++
+		case <-timeout:
+			t.Fatalf("Timeout: received only %d messages, expected 3", received)
+		}
+	}
+}
+
+func TestClient_writeMessageWithQueue_QueueError(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+
+	server, wsURL := createTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		conn, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		// Read first message then close
+		_, _, _ = conn.ReadMessage()
+		conn.Close()
+	})
+	defer server.Close()
+
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+
+	client := NewClient(hub, clientConn, "queue-error-test", logger)
+
+	// Queue a message
+	client.send <- []byte(`{"type":"queued"}`)
+
+	_ = clientConn.SetWriteDeadline(time.Now().Add(writeWait))
+
+	// First write succeeds
+	_ = client.writeMessageWithQueue([]byte(`{"type":"first"}`))
+
+	// Wait for server to close
+	time.Sleep(100 * time.Millisecond)
+
+	// Queue another message and try again - should fail
+	client.send <- []byte(`{"type":"queued2"}`)
+	result := client.writeMessageWithQueue([]byte(`{"type":"second"}`))
+	if result {
+		t.Error("writeMessageWithQueue should return false when connection is closed")
+	}
+}

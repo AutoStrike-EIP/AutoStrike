@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"autostrike/internal/application"
+	"autostrike/internal/domain/entity"
 	"autostrike/internal/infrastructure/websocket"
 
 	"github.com/gin-gonic/gin"
@@ -44,9 +45,10 @@ var upgrader = gorillaws.Upgrader{
 
 // WebSocketHandler handles WebSocket connections
 type WebSocketHandler struct {
-	hub          *websocket.Hub
-	agentService *application.AgentService
-	logger       *zap.Logger
+	hub              *websocket.Hub
+	agentService     *application.AgentService
+	executionService *application.ExecutionService
+	logger           *zap.Logger
 }
 
 // NewWebSocketHandler creates a new WebSocket handler
@@ -56,6 +58,11 @@ func NewWebSocketHandler(hub *websocket.Hub, agentService *application.AgentServ
 		agentService: agentService,
 		logger:       logger,
 	}
+}
+
+// SetExecutionService sets the execution service for result updates
+func (h *WebSocketHandler) SetExecutionService(svc *application.ExecutionService) {
+	h.executionService = svc
 }
 
 // HandleAgentConnection handles WebSocket connections from agents
@@ -176,10 +183,12 @@ func (h *WebSocketHandler) handleHeartbeat(client *websocket.Client, payload jso
 
 // TaskResultPayload represents task execution result from agent
 type TaskResultPayload struct {
-	TaskID   string `json:"task_id"`
-	ExitCode int    `json:"exit_code"`
-	Output   string `json:"output"`
-	Error    string `json:"error,omitempty"`
+	TaskID      string `json:"task_id"`
+	TechniqueID string `json:"technique_id"`
+	Success     bool   `json:"success"`
+	ExitCode    int    `json:"exit_code"`
+	Output      string `json:"output"`
+	Error       string `json:"error,omitempty"`
 }
 
 func (h *WebSocketHandler) handleTaskResult(client *websocket.Client, payload json.RawMessage) {
@@ -192,8 +201,36 @@ func (h *WebSocketHandler) handleTaskResult(client *websocket.Client, payload js
 	h.logger.Info("Received task result",
 		zap.String("paw", client.GetAgentPaw()),
 		zap.String("task_id", result.TaskID),
+		zap.Bool("success", result.Success),
 		zap.Int("exit_code", result.ExitCode),
 	)
+
+	// Update result in database
+	if h.executionService != nil {
+		ctx := client.Context()
+		status := entity.StatusSuccess
+		if !result.Success {
+			status = entity.StatusFailed
+		}
+
+		output := result.Output
+		if result.Error != "" {
+			output = result.Error + "\n" + output
+		}
+
+		h.logger.Info("Updating result in database",
+			zap.String("task_id", result.TaskID),
+			zap.String("status", string(status)),
+		)
+
+		if err := h.executionService.UpdateResultByID(ctx, result.TaskID, status, output, result.ExitCode); err != nil {
+			h.logger.Error("Failed to update result", zap.Error(err), zap.String("task_id", result.TaskID))
+		} else {
+			h.logger.Info("Result updated successfully", zap.String("task_id", result.TaskID))
+		}
+	} else {
+		h.logger.Warn("executionService is nil, cannot update result", zap.String("task_id", result.TaskID))
+	}
 
 	// Send acknowledgment back to agent
 	_ = client.Send("task_ack", map[string]string{"task_id": result.TaskID, "status": "received"})

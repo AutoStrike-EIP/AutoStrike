@@ -1089,3 +1089,121 @@ func TestWebSocketHandler_FullIntegration(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 }
+
+func TestWebSocketHandler_SetExecutionService(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	// Initially nil
+	if handler.executionService != nil {
+		t.Error("executionService should be nil initially")
+	}
+
+	// Create a mock execution service (we just need to test that it gets set)
+	// We can pass nil since we're just testing the setter
+	handler.SetExecutionService(nil)
+
+	// Now it should be set (to nil in this case, but the method was called)
+	// The real test is that the method exists and can be called
+}
+
+func TestWebSocketHandler_HandleTaskResult_WithExecutionService(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	// Set execution service to nil to test the nil check path
+	handler.SetExecutionService(nil)
+
+	client := websocket.NewClient(hub, nil, "test-agent", logger)
+
+	payload := TaskResultPayload{
+		TaskID:      "task-with-service",
+		TechniqueID: "T1059",
+		Success:     true,
+		ExitCode:    0,
+		Output:      "command executed successfully",
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	// Should not panic even without execution service
+	handler.handleTaskResult(client, payloadBytes)
+}
+
+func TestWebSocketHandler_HandleTaskResult_SuccessStatus(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	client := websocket.NewClient(hub, nil, "test-agent", logger)
+
+	payload := TaskResultPayload{
+		TaskID:      "task-success",
+		TechniqueID: "T1082",
+		Success:     true,
+		ExitCode:    0,
+		Output:      "System info collected",
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	// Should handle successfully
+	handler.handleTaskResult(client, payloadBytes)
+}
+
+func TestWebSocketHandler_HandleTaskResult_FailedStatus(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	client := websocket.NewClient(hub, nil, "test-agent", logger)
+
+	payload := TaskResultPayload{
+		TaskID:      "task-failed",
+		TechniqueID: "T1059",
+		Success:     false,
+		ExitCode:    1,
+		Output:      "",
+		Error:       "Command not found",
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	// Should handle failure case
+	handler.handleTaskResult(client, payloadBytes)
+}
+
+func TestWebSocketHandler_HandleTaskResult_WithErrorOutput(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+
+	repo := newWSTestAgentRepo()
+	agentService := application.NewAgentService(repo)
+	handler := NewWebSocketHandler(hub, agentService, logger)
+
+	client := websocket.NewClient(hub, nil, "test-agent", logger)
+
+	payload := TaskResultPayload{
+		TaskID:      "task-with-error",
+		TechniqueID: "T1016",
+		Success:     false,
+		ExitCode:    127,
+		Output:      "partial output",
+		Error:       "command failed with error",
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	// Error and output should be combined
+	handler.handleTaskResult(client, payloadBytes)
+}

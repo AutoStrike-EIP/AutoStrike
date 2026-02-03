@@ -118,35 +118,22 @@ func (c *Client) handleOutgoingMessage(message []byte, ok bool) bool {
 	return c.writeMessageWithQueue(message)
 }
 
-// writeMessageWithQueue writes a message and any queued messages
+// writeMessageWithQueue writes a message and any queued messages as separate frames
 func (c *Client) writeMessageWithQueue(message []byte) bool {
-	w, err := c.conn.NextWriter(websocket.TextMessage)
-	if err != nil {
+	// Write first message
+	if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
 		return false
 	}
 
-	if _, err := w.Write(message); err != nil {
-		return false
-	}
-
-	if !c.writeQueuedMessages(w) {
-		return false
-	}
-
-	return w.Close() == nil
-}
-
-// writeQueuedMessages writes any additional queued messages
-func (c *Client) writeQueuedMessages(w interface{ Write([]byte) (int, error) }) bool {
+	// Write any queued messages as separate frames
 	n := len(c.send)
 	for i := 0; i < n; i++ {
-		if _, err := w.Write([]byte{'\n'}); err != nil {
-			return false
-		}
-		if _, err := w.Write(<-c.send); err != nil {
+		msg := <-c.send
+		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -186,11 +173,16 @@ func (c *Client) GetAgentPaw() string {
 	return c.agentPaw
 }
 
-// SetAgentPaw sets the agent paw for this connection
+// SetAgentPaw sets the agent paw for this connection and registers with hub
 func (c *Client) SetAgentPaw(paw string) {
 	c.pawMu.Lock()
-	defer c.pawMu.Unlock()
 	c.agentPaw = paw
+	c.pawMu.Unlock()
+
+	// Register agent with hub so it can receive targeted messages
+	if paw != "" && c.hub != nil {
+		c.hub.RegisterAgent(paw, c)
+	}
 }
 
 // Context returns a background context for database operations

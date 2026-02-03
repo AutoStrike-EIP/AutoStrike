@@ -459,3 +459,110 @@ func TestHub_ConcurrentAccess(t *testing.T) {
 		t.Error("GetConnectedAgents should not return nil")
 	}
 }
+
+func TestHub_SetOnAgentDisconnect(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+
+	callbackCalled := false
+	disconnectedPaw := ""
+
+	hub.SetOnAgentDisconnect(func(paw string) {
+		callbackCalled = true
+		disconnectedPaw = paw
+	})
+
+	client := &Client{
+		hub:      hub,
+		send:     make(chan []byte, 256),
+		agentPaw: "callback-test-agent",
+	}
+
+	hub.handleRegister(client)
+	hub.handleUnregister(client)
+
+	if !callbackCalled {
+		t.Error("Disconnect callback was not called")
+	}
+
+	if disconnectedPaw != "callback-test-agent" {
+		t.Errorf("Expected paw 'callback-test-agent', got '%s'", disconnectedPaw)
+	}
+}
+
+func TestHub_SetOnAgentDisconnect_NoCallback(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+
+	// No callback set, should not panic
+	client := &Client{
+		hub:      hub,
+		send:     make(chan []byte, 256),
+		agentPaw: "no-callback-agent",
+	}
+
+	hub.handleRegister(client)
+	hub.handleUnregister(client) // Should not panic even without callback
+}
+
+func TestHub_SetOnAgentDisconnect_NoPaw(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+
+	callbackCalled := false
+
+	hub.SetOnAgentDisconnect(func(paw string) {
+		callbackCalled = true
+	})
+
+	// Client without paw (dashboard client)
+	client := &Client{
+		hub:      hub,
+		send:     make(chan []byte, 256),
+		agentPaw: "",
+	}
+
+	hub.handleRegister(client)
+	hub.handleUnregister(client)
+
+	// Callback should NOT be called for clients without paw
+	if callbackCalled {
+		t.Error("Callback should not be called for clients without paw")
+	}
+}
+
+func TestHub_RegisterAgent(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+
+	client := &Client{
+		hub:      hub,
+		send:     make(chan []byte, 256),
+		agentPaw: "",
+	}
+
+	// Register client first (without paw)
+	hub.handleRegister(client)
+
+	// Then register agent with paw
+	hub.RegisterAgent("late-registered-paw", client)
+
+	if hub.agents["late-registered-paw"] != client {
+		t.Error("Agent was not registered with RegisterAgent")
+	}
+}
+
+func TestHub_RegisterAgent_Multiple(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+
+	client1 := &Client{hub: hub, send: make(chan []byte, 256)}
+	client2 := &Client{hub: hub, send: make(chan []byte, 256)}
+
+	hub.RegisterAgent("agent1", client1)
+	hub.RegisterAgent("agent2", client2)
+
+	if len(hub.agents) != 2 {
+		t.Errorf("Expected 2 agents, got %d", len(hub.agents))
+	}
+}

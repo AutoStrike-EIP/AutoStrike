@@ -1,0 +1,186 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import Login from './Login';
+import { AuthProvider } from '../contexts/AuthContext';
+import { authApi } from '../lib/api';
+
+// Mock the API
+vi.mock('../lib/api', () => ({
+  authApi: {
+    login: vi.fn(),
+    me: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+  },
+}));
+
+// Mock localStorage
+const localStorageMock = {
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
+};
+Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+
+// Mock useNavigate
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
+function renderLogin() {
+  return render(
+    <MemoryRouter>
+      <AuthProvider>
+        <Login />
+      </AuthProvider>
+    </MemoryRouter>
+  );
+}
+
+describe('Login Page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.getItem.mockReturnValue(null);
+  });
+
+  it('renders login form', () => {
+    renderLogin();
+    expect(screen.getByText('AutoStrike')).toBeInTheDocument();
+    expect(screen.getByText('Sign in to your account')).toBeInTheDocument();
+    expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    expect(screen.getByLabelText('Password')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+  });
+
+  it('renders default credentials hint', () => {
+    renderLogin();
+    expect(screen.getByText('Default credentials: admin / admin123')).toBeInTheDocument();
+  });
+
+  it('renders platform subtitle', () => {
+    renderLogin();
+    expect(screen.getByText('Breach and Attack Simulation Platform')).toBeInTheDocument();
+  });
+
+  it('allows entering username and password', () => {
+    renderLogin();
+    const usernameInput = screen.getByLabelText('Username');
+    const passwordInput = screen.getByLabelText('Password');
+
+    fireEvent.change(usernameInput, { target: { value: 'testuser' } });
+    fireEvent.change(passwordInput, { target: { value: 'testpass' } });
+
+    expect(usernameInput).toHaveValue('testuser');
+    expect(passwordInput).toHaveValue('testpass');
+  });
+
+  it('submits login form successfully', async () => {
+    vi.mocked(authApi.login).mockResolvedValue({
+      data: {
+        access_token: 'test-token',
+        refresh_token: 'test-refresh',
+        expires_in: 900,
+      },
+    } as never);
+    vi.mocked(authApi.me).mockResolvedValue({
+      data: {
+        id: 'user-1',
+        username: 'testuser',
+        email: 'test@example.com',
+        role: 'admin',
+      },
+    } as never);
+
+    renderLogin();
+    const usernameInput = screen.getByLabelText('Username');
+    const passwordInput = screen.getByLabelText('Password');
+    const submitButton = screen.getByRole('button', { name: 'Sign in' });
+
+    fireEvent.change(usernameInput, { target: { value: 'testuser' } });
+    fireEvent.change(passwordInput, { target: { value: 'testpass' } });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(authApi.login).toHaveBeenCalledWith({
+        username: 'testuser',
+        password: 'testpass',
+      });
+    });
+  });
+
+  it('shows error message on login failure', async () => {
+    vi.mocked(authApi.login).mockRejectedValue(new Error('Invalid credentials'));
+
+    renderLogin();
+    const usernameInput = screen.getByLabelText('Username');
+    const passwordInput = screen.getByLabelText('Password');
+    const submitButton = screen.getByRole('button', { name: 'Sign in' });
+
+    fireEvent.change(usernameInput, { target: { value: 'wronguser' } });
+    fireEvent.change(passwordInput, { target: { value: 'wrongpass' } });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Invalid username or password')).toBeInTheDocument();
+    });
+  });
+
+  it('shows loading state during login', async () => {
+    vi.mocked(authApi.login).mockImplementation(
+      () => new Promise((resolve) => setTimeout(resolve, 100))
+    );
+
+    renderLogin();
+    const usernameInput = screen.getByLabelText('Username');
+    const passwordInput = screen.getByLabelText('Password');
+    const submitButton = screen.getByRole('button', { name: 'Sign in' });
+
+    fireEvent.change(usernameInput, { target: { value: 'testuser' } });
+    fireEvent.change(passwordInput, { target: { value: 'testpass' } });
+    fireEvent.click(submitButton);
+
+    expect(await screen.findByText('Signing in...')).toBeInTheDocument();
+  });
+
+  it('disables submit button during loading', async () => {
+    vi.mocked(authApi.login).mockImplementation(
+      () => new Promise((resolve) => setTimeout(resolve, 100))
+    );
+
+    renderLogin();
+    const usernameInput = screen.getByLabelText('Username');
+    const passwordInput = screen.getByLabelText('Password');
+    const submitButton = screen.getByRole('button', { name: 'Sign in' });
+
+    fireEvent.change(usernameInput, { target: { value: 'testuser' } });
+    fireEvent.change(passwordInput, { target: { value: 'testpass' } });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(submitButton).toBeDisabled();
+    });
+  });
+
+  it('has required attribute on username input', () => {
+    renderLogin();
+    expect(screen.getByLabelText('Username')).toBeRequired();
+  });
+
+  it('has required attribute on password input', () => {
+    renderLogin();
+    expect(screen.getByLabelText('Password')).toBeRequired();
+  });
+
+  it('has correct input types', () => {
+    renderLogin();
+    expect(screen.getByLabelText('Username')).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
+  });
+});

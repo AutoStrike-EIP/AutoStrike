@@ -58,6 +58,7 @@ func main() {
 	scenarioRepo := sqlite.NewScenarioRepository(db)
 	techniqueRepo := sqlite.NewTechniqueRepository(db)
 	resultRepo := sqlite.NewResultRepository(db)
+	userRepo := sqlite.NewUserRepository(db)
 
 	// Initialize domain services
 	validator := service.NewTechniqueValidator()
@@ -76,6 +77,19 @@ func main() {
 		calculator,
 	)
 	techniqueService := application.NewTechniqueService(techniqueRepo)
+
+	// Initialize auth service (JWT secret from environment)
+	jwtSecret := os.Getenv("JWT_SECRET")
+	var authService *application.AuthService
+	if jwtSecret != "" {
+		authService = application.NewAuthService(userRepo, jwtSecret)
+		// Ensure default admin user exists
+		if err := authService.EnsureDefaultAdmin(context.Background()); err != nil {
+			logger.Warn("Failed to create default admin user", zap.Error(err))
+		} else {
+			logger.Info("Default admin user ensured")
+		}
+	}
 
 	// Auto-import techniques from configs directory at startup
 	autoImportTechniques(techniqueService, logger)
@@ -116,6 +130,7 @@ func main() {
 		scenarioService,
 		executionService,
 		techniqueService,
+		authService,
 		hub,
 		logger,
 	)

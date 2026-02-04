@@ -22,12 +22,62 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === HttpStatusCode.Unauthorized) {
       localStorage.removeItem('token');
-      // Auth redirect will be implemented in Phase 3
-      console.warn('Unauthorized - token cleared');
+      localStorage.removeItem('refreshToken');
+      // Redirect to login if not already there
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
 );
+
+// Auth types
+export interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  token_type: string;
+}
+
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  role: 'admin' | 'operator' | 'viewer';
+  created_at: string;
+  updated_at: string;
+}
+
+// Auth API methods
+export const authApi = {
+  /**
+   * Login with username and password
+   */
+  login: (credentials: LoginCredentials) =>
+    api.post<TokenResponse>('/auth/login', credentials),
+
+  /**
+   * Refresh access token using refresh token
+   */
+  refresh: (refreshToken: string) =>
+    api.post<TokenResponse>('/auth/refresh', { refresh_token: refreshToken }),
+
+  /**
+   * Logout (client-side token removal)
+   */
+  logout: () => api.post('/auth/logout'),
+
+  /**
+   * Get current authenticated user
+   */
+  me: () => api.get<User>('/auth/me'),
+};
 
 // Execution API methods
 export const executionApi = {

@@ -67,10 +67,11 @@ func NewServer(
 	scenarioService *application.ScenarioService,
 	executionService *application.ExecutionService,
 	techniqueService *application.TechniqueService,
+	authService *application.AuthService,
 	hub *websocket.Hub,
 	logger *zap.Logger,
 ) *Server {
-	return NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, hub, logger, NewServerConfig())
+	return NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, authService, hub, logger, NewServerConfig())
 }
 
 // NewServerWithConfig creates a new REST server with explicit configuration
@@ -79,6 +80,7 @@ func NewServerWithConfig(
 	scenarioService *application.ScenarioService,
 	executionService *application.ExecutionService,
 	techniqueService *application.TechniqueService,
+	authService *application.AuthService,
 	hub *websocket.Hub,
 	logger *zap.Logger,
 	config *ServerConfig,
@@ -109,6 +111,12 @@ func NewServerWithConfig(
 		wsHandler.RegisterRoutes(router)
 	}
 
+	// Auth routes (public - no auth middleware required)
+	if authService != nil {
+		authHandler := handlers.NewAuthHandler(authService)
+		authHandler.RegisterRoutes(router)
+	}
+
 	// API v1 routes
 	api := router.Group("/api/v1")
 
@@ -125,6 +133,12 @@ func NewServerWithConfig(
 	}
 
 	{
+		// Auth protected routes (GET /auth/me)
+		if authService != nil {
+			authHandler := handlers.NewAuthHandler(authService)
+			authHandler.RegisterProtectedRoutes(api)
+		}
+
 		// Agents
 		agentHandler := handlers.NewAgentHandler(agentService)
 		agentHandler.RegisterRoutes(api)

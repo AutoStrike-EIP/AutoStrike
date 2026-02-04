@@ -11,7 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const errNotifNotAuthenticated = "not authenticated"
+// Notification handler error messages
+const (
+	errNotifNotAuthenticated = "not authenticated"
+	errSettingsNotFound      = "settings not found"
+	errFailedToGetSettings   = "failed to get settings"
+)
 
 // NotificationHandler handles notification-related HTTP requests
 type NotificationHandler struct {
@@ -209,14 +214,14 @@ func (h *NotificationHandler) GetSettings(c *gin.Context) {
 	settings, err := h.notificationService.GetSettingsByUserID(c.Request.Context(), userID.(string))
 	if err != nil {
 		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "settings not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errSettingsNotFound})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get settings"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errFailedToGetSettings})
 		return
 	}
 	if settings == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "settings not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": errSettingsNotFound})
 		return
 	}
 
@@ -300,14 +305,14 @@ func (h *NotificationHandler) UpdateSettings(c *gin.Context) {
 	settings, err := h.notificationService.GetSettingsByUserID(c.Request.Context(), userID.(string))
 	if err != nil {
 		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "settings not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errSettingsNotFound})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get settings"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errFailedToGetSettings})
 		return
 	}
 	if settings == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "settings not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": errSettingsNotFound})
 		return
 	}
 
@@ -352,14 +357,14 @@ func (h *NotificationHandler) DeleteSettings(c *gin.Context) {
 	settings, err := h.notificationService.GetSettingsByUserID(c.Request.Context(), userID.(string))
 	if err != nil {
 		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "settings not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errSettingsNotFound})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get settings"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errFailedToGetSettings})
 		return
 	}
 	if settings == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "settings not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": errSettingsNotFound})
 		return
 	}
 

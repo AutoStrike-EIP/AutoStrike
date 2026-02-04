@@ -10,6 +10,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Admin handler error messages
+const (
+	errAdminAccessRequired = "admin access required"
+	errUserIDRequired      = "user id is required"
+	errUserNotFound        = "user not found"
+	errInvalidRole         = "invalid role"
+	timeFormatISO8601      = "2006-01-02T15:04:05Z"
+)
+
 // AdminHandler handles admin-related HTTP requests
 type AdminHandler struct {
 	authService *application.AuthService
@@ -66,11 +75,11 @@ func toUserResponse(user *entity.User) *UserResponse {
 		Role:        string(user.Role),
 		RoleDisplay: user.Role.DisplayName(),
 		IsActive:    user.IsActive,
-		CreatedAt:   user.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:   user.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		CreatedAt:   user.CreatedAt.Format(timeFormatISO8601),
+		UpdatedAt:   user.UpdatedAt.Format(timeFormatISO8601),
 	}
 	if user.LastLoginAt != nil {
-		formatted := user.LastLoginAt.Format("2006-01-02T15:04:05Z")
+		formatted := user.LastLoginAt.Format(timeFormatISO8601)
 		resp.LastLoginAt = &formatted
 	}
 	return resp
@@ -80,7 +89,7 @@ func toUserResponse(user *entity.User) *UserResponse {
 func (h *AdminHandler) ListUsers(c *gin.Context) {
 	// Check admin permission
 	if !h.isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired})
 		return
 	}
 
@@ -104,20 +113,20 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 // GetUser returns a specific user
 func (h *AdminHandler) GetUser(c *gin.Context) {
 	if !h.isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired})
 		return
 	}
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user id is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errUserIDRequired})
 		return
 	}
 
 	user, err := h.authService.GetUser(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get user"})
@@ -138,7 +147,7 @@ type CreateUserRequest struct {
 // CreateUser creates a new user
 func (h *AdminHandler) CreateUser(c *gin.Context) {
 	if !h.isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired})
 		return
 	}
 
@@ -151,7 +160,7 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 	// Validate role
 	if !entity.IsValidRole(req.Role) {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":       "invalid role",
+			"error":       errInvalidRole,
 			"valid_roles": entity.ValidRoles(),
 		})
 		return
@@ -186,13 +195,13 @@ type UpdateUserRequest struct {
 // UpdateUser updates a user's details
 func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	if !h.isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired})
 		return
 	}
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user id is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errUserIDRequired})
 		return
 	}
 
@@ -206,7 +215,7 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	currentUser, err := h.authService.GetUser(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get user"})
@@ -228,7 +237,7 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	if req.Role != "" {
 		if !entity.IsValidRole(req.Role) {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error":       "invalid role",
+				"error":       errInvalidRole,
 				"valid_roles": entity.ValidRoles(),
 			})
 			return
@@ -239,7 +248,7 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	user, err := h.authService.UpdateUser(c.Request.Context(), id, username, email, role)
 	if err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
 			return
 		}
 		if errors.Is(err, application.ErrUserAlreadyExists) {
@@ -247,7 +256,7 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 			return
 		}
 		if errors.Is(err, application.ErrInvalidRole) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidRole})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update user"})
@@ -265,13 +274,13 @@ type UpdateRoleRequest struct {
 // UpdateUserRole updates only a user's role
 func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 	if !h.isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired})
 		return
 	}
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user id is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errUserIDRequired})
 		return
 	}
 
@@ -283,7 +292,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 
 	if !entity.IsValidRole(req.Role) {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":       "invalid role",
+			"error":       errInvalidRole,
 			"valid_roles": entity.ValidRoles(),
 		})
 		return
@@ -292,7 +301,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 	user, err := h.authService.UpdateUserRole(c.Request.Context(), id, entity.UserRole(req.Role))
 	if err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update user role"})
@@ -305,13 +314,13 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 // DeactivateUser deactivates a user account
 func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 	if !h.isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired})
 		return
 	}
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user id is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errUserIDRequired})
 		return
 	}
 
@@ -321,7 +330,7 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 	err := h.authService.DeactivateUser(c.Request.Context(), id, currentUserIDStr)
 	if err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
 			return
 		}
 		if errors.Is(err, application.ErrCannotDeactivateSelf) {
@@ -342,20 +351,20 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 // ReactivateUser reactivates a deactivated user account
 func (h *AdminHandler) ReactivateUser(c *gin.Context) {
 	if !h.isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired})
 		return
 	}
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user id is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errUserIDRequired})
 		return
 	}
 
 	err := h.authService.ReactivateUser(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reactivate user"})
@@ -373,13 +382,13 @@ type ResetPasswordRequest struct {
 // ResetPassword resets a user's password (admin action)
 func (h *AdminHandler) ResetPassword(c *gin.Context) {
 	if !h.isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired})
 		return
 	}
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user id is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errUserIDRequired})
 		return
 	}
 
@@ -392,7 +401,7 @@ func (h *AdminHandler) ResetPassword(c *gin.Context) {
 	err := h.authService.ResetPassword(c.Request.Context(), id, req.NewPassword)
 	if err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reset password"})
@@ -418,7 +427,7 @@ func (h *AdminHandler) isAdmin(c *gin.Context) bool {
 // GetRoles returns all valid roles (useful for UI dropdowns)
 func (h *AdminHandler) GetRoles(c *gin.Context) {
 	if !h.isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errAdminAccessRequired})
 		return
 	}
 

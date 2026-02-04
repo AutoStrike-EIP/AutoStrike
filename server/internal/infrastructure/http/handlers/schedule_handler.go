@@ -10,6 +10,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Schedule handler error messages
+const (
+	errScheduleIDRequired = "schedule ID required"
+	errScheduleNotFound   = "schedule not found"
+)
+
 // ScheduleHandler handles schedule-related HTTP requests
 type ScheduleHandler struct {
 	scheduleService *application.ScheduleService
@@ -101,7 +107,7 @@ func (h *ScheduleHandler) GetByID(c *gin.Context) {
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "schedule ID required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errScheduleIDRequired})
 		return
 	}
 
@@ -111,7 +117,7 @@ func (h *ScheduleHandler) GetByID(c *gin.Context) {
 		return
 	}
 	if schedule == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "schedule not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": errScheduleNotFound})
 		return
 	}
 
@@ -196,7 +202,7 @@ func (h *ScheduleHandler) Update(c *gin.Context) {
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "schedule ID required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errScheduleIDRequired})
 		return
 	}
 
@@ -229,7 +235,7 @@ func (h *ScheduleHandler) Update(c *gin.Context) {
 
 	schedule, err := h.scheduleService.Update(c.Request.Context(), id, updateReq)
 	if err != nil {
-		if err.Error() == "schedule not found" {
+		if err.Error() == errScheduleNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
@@ -260,7 +266,7 @@ func (h *ScheduleHandler) Delete(c *gin.Context) {
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "schedule ID required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errScheduleIDRequired})
 		return
 	}
 
@@ -293,13 +299,13 @@ func (h *ScheduleHandler) Pause(c *gin.Context) {
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "schedule ID required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errScheduleIDRequired})
 		return
 	}
 
 	schedule, err := h.scheduleService.Pause(c.Request.Context(), id)
 	if err != nil {
-		if err.Error() == "schedule not found" {
+		if err.Error() == errScheduleNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
@@ -331,13 +337,13 @@ func (h *ScheduleHandler) Resume(c *gin.Context) {
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "schedule ID required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errScheduleIDRequired})
 		return
 	}
 
 	schedule, err := h.scheduleService.Resume(c.Request.Context(), id)
 	if err != nil {
-		if err.Error() == "schedule not found" {
+		if err.Error() == errScheduleNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
@@ -369,13 +375,13 @@ func (h *ScheduleHandler) RunNow(c *gin.Context) {
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "schedule ID required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errScheduleIDRequired})
 		return
 	}
 
 	run, err := h.scheduleService.RunNow(c.Request.Context(), id)
 	if err != nil {
-		if err.Error() == "schedule not found" {
+		if err.Error() == errScheduleNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
@@ -407,7 +413,7 @@ func (h *ScheduleHandler) GetRuns(c *gin.Context) {
 
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "schedule ID required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errScheduleIDRequired})
 		return
 	}
 

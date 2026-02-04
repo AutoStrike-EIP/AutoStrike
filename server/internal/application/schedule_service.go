@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -12,6 +13,9 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
+
+// ErrScheduleNotFound is returned when a schedule is not found
+var ErrScheduleNotFound = errors.New("schedule not found")
 
 // ScheduleService handles schedule-related business logic
 type ScheduleService struct {
@@ -97,7 +101,7 @@ func (s *ScheduleService) Update(ctx context.Context, id string, req *CreateSche
 		return nil, err
 	}
 	if schedule == nil {
-		return nil, fmt.Errorf("schedule not found")
+		return nil, ErrScheduleNotFound
 	}
 
 	schedule.Name = req.Name
@@ -151,7 +155,7 @@ func (s *ScheduleService) Pause(ctx context.Context, id string) (*entity.Schedul
 		return nil, err
 	}
 	if schedule == nil {
-		return nil, fmt.Errorf("schedule not found")
+		return nil, ErrScheduleNotFound
 	}
 
 	schedule.Status = entity.ScheduleStatusPaused
@@ -171,7 +175,7 @@ func (s *ScheduleService) Resume(ctx context.Context, id string) (*entity.Schedu
 		return nil, err
 	}
 	if schedule == nil {
-		return nil, fmt.Errorf("schedule not found")
+		return nil, ErrScheduleNotFound
 	}
 
 	schedule.Status = entity.ScheduleStatusActive
@@ -332,7 +336,7 @@ func (s *ScheduleService) RunNow(ctx context.Context, id string) (*entity.Schedu
 		return nil, err
 	}
 	if schedule == nil {
-		return nil, fmt.Errorf("schedule not found")
+		return nil, ErrScheduleNotFound
 	}
 
 	// Create schedule run record

@@ -125,15 +125,14 @@ func main() {
 	}()
 
 	// Initialize HTTP server
-	server := rest.NewServer(
-		agentService,
-		scenarioService,
-		executionService,
-		techniqueService,
-		authService,
-		hub,
-		logger,
-	)
+	services := &rest.Services{
+		Agent:     agentService,
+		Scenario:  scenarioService,
+		Execution: executionService,
+		Technique: techniqueService,
+		Auth:      authService,
+	}
+	server := rest.NewServer(services, hub, logger)
 
 	// Start server
 	go func() {

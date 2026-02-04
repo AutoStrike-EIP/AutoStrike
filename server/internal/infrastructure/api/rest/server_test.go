@@ -180,10 +180,13 @@ func TestNewServerConfig_AuthDisabled(t *testing.T) {
 
 func TestNewServerWithConfig_AuthDisabled(t *testing.T) {
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 	hub := websocket.NewHub(logger)
 
 	config := &ServerConfig{
@@ -192,7 +195,7 @@ func TestNewServerWithConfig_AuthDisabled(t *testing.T) {
 		EnableAuth:  false,
 	}
 
-	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, hub, logger, config)
+	server := NewServerWithConfig(services, hub, logger, config)
 
 	if server == nil {
 		t.Fatal("NewServerWithConfig returned nil")
@@ -205,10 +208,13 @@ func TestNewServerWithConfig_AuthDisabled(t *testing.T) {
 
 func TestNewServerWithConfig_AuthEnabled(t *testing.T) {
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 	hub := websocket.NewHub(logger)
 
 	config := &ServerConfig{
@@ -217,7 +223,7 @@ func TestNewServerWithConfig_AuthEnabled(t *testing.T) {
 		EnableAuth:  true,
 	}
 
-	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, hub, logger, config)
+	server := NewServerWithConfig(services, hub, logger, config)
 
 	if server == nil {
 		t.Fatal("NewServerWithConfig returned nil")
@@ -226,15 +232,18 @@ func TestNewServerWithConfig_AuthEnabled(t *testing.T) {
 
 func TestNewServerWithConfig_NoHub(t *testing.T) {
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 
 	config := &ServerConfig{EnableAuth: false}
 
 	// Should not panic with nil hub
-	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, nil, logger, config)
+	server := NewServerWithConfig(services, nil, logger, config)
 
 	if server == nil {
 		t.Fatal("NewServerWithConfig returned nil")
@@ -246,13 +255,16 @@ func TestNewServer(t *testing.T) {
 	defer os.Unsetenv("ENABLE_AUTH")
 
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 	hub := websocket.NewHub(logger)
 
-	server := NewServer(agentService, scenarioService, executionService, techniqueService, nil, hub, logger)
+	server := NewServer(services, hub, logger)
 
 	if server == nil {
 		t.Fatal("NewServer returned nil")
@@ -261,13 +273,16 @@ func TestNewServer(t *testing.T) {
 
 func TestServer_Router(t *testing.T) {
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 
 	config := &ServerConfig{EnableAuth: false}
-	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, nil, logger, config)
+	server := NewServerWithConfig(services, nil, logger, config)
 
 	router := server.Router()
 	if router == nil {
@@ -277,13 +292,16 @@ func TestServer_Router(t *testing.T) {
 
 func TestServer_HealthEndpoint(t *testing.T) {
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 
 	config := &ServerConfig{EnableAuth: false}
-	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, nil, logger, config)
+	server := NewServerWithConfig(services, nil, logger, config)
 
 	req, _ := http.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -297,13 +315,16 @@ func TestServer_HealthEndpoint(t *testing.T) {
 
 func TestServer_APIRoutes(t *testing.T) {
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 
 	config := &ServerConfig{EnableAuth: false}
-	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, nil, logger, config)
+	server := NewServerWithConfig(services, nil, logger, config)
 
 	routes := server.Router().Routes()
 	expectedPaths := []string{"/health", "/api/v1/agents", "/api/v1/techniques"}
@@ -324,13 +345,16 @@ func TestServer_APIRoutes(t *testing.T) {
 
 func TestServer_Run_InvalidAddress(t *testing.T) {
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 
 	config := &ServerConfig{EnableAuth: false}
-	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, nil, logger, config)
+	server := NewServerWithConfig(services, nil, logger, config)
 
 	// Run in goroutine and expect it to fail with invalid address
 	errCh := make(chan error, 1)
@@ -374,10 +398,13 @@ func TestNewServerConfig_CustomDashboardPath(t *testing.T) {
 
 func TestServer_DashboardRoutes_InvalidPath(t *testing.T) {
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 
 	// Use a path that doesn't exist
 	config := &ServerConfig{
@@ -386,7 +413,7 @@ func TestServer_DashboardRoutes_InvalidPath(t *testing.T) {
 	}
 
 	// Should not panic, just log warning
-	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, nil, logger, config)
+	server := NewServerWithConfig(services, nil, logger, config)
 	if server == nil {
 		t.Fatal("Server should be created even with invalid dashboard path")
 	}
@@ -394,10 +421,13 @@ func TestServer_DashboardRoutes_InvalidPath(t *testing.T) {
 
 func TestServer_NoRoute_APIPath(t *testing.T) {
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 
 	// Create temp directory with index.html for dashboard
 	tmpDir := t.TempDir()
@@ -414,7 +444,7 @@ func TestServer_NoRoute_APIPath(t *testing.T) {
 		DashboardPath: tmpDir,
 	}
 
-	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, nil, logger, config)
+	server := NewServerWithConfig(services, nil, logger, config)
 
 	// Request to non-existent API endpoint should return 404 JSON
 	req, _ := http.NewRequest("GET", "/api/v1/nonexistent", nil)
@@ -428,10 +458,13 @@ func TestServer_NoRoute_APIPath(t *testing.T) {
 
 func TestServer_NoRoute_NonAPIPath(t *testing.T) {
 	logger := zap.NewNop()
-	agentService := application.NewAgentService(&mockAgentRepo{})
-	scenarioService := application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator())
-	techniqueService := application.NewTechniqueService(&mockTechniqueRepo{})
-	executionService := application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil)
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
 
 	// Create temp directory with index.html for dashboard
 	tmpDir := t.TempDir()
@@ -448,7 +481,7 @@ func TestServer_NoRoute_NonAPIPath(t *testing.T) {
 		DashboardPath: tmpDir,
 	}
 
-	server := NewServerWithConfig(agentService, scenarioService, executionService, techniqueService, nil, nil, logger, config)
+	server := NewServerWithConfig(services, nil, logger, config)
 
 	// Request to non-API path should serve index.html (SPA fallback)
 	req, _ := http.NewRequest("GET", "/some/spa/route", nil)

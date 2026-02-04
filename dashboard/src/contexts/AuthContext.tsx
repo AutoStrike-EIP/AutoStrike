@@ -29,6 +29,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const isAuthenticated = user !== null;
 
+  // Try to refresh tokens when access token is invalid
+  const tryRefreshToken = useCallback(async (): Promise<boolean> => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      return false;
+    }
+
+    try {
+      const response = await authApi.refresh(refreshToken);
+      const { access_token, refresh_token } = response.data;
+      localStorage.setItem('token', access_token);
+      localStorage.setItem('refreshToken', refresh_token);
+      return true;
+    } catch {
+      // Refresh token also invalid/expired
+      return false;
+    }
+  }, []);
+
   // Check for existing token on mount
   useEffect(() => {
     const checkAuth = async () => {
@@ -42,16 +61,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const response = await authApi.me();
         setUser(response.data);
       } catch {
-        // Token invalid or expired, clear it
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
+        // Token invalid or expired, try to refresh
+        const refreshed = await tryRefreshToken();
+        if (refreshed) {
+          // Retry with new token
+          try {
+            const response = await authApi.me();
+            setUser(response.data);
+          } catch {
+            // Still failed, clear tokens
+            localStorage.removeItem('token');
+            localStorage.removeItem('refreshToken');
+          }
+        } else {
+          // Refresh failed, clear tokens
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
     checkAuth();
-  }, []);
+  }, [tryRefreshToken]);
 
   const login = useCallback(async (credentials: LoginCredentials) => {
     const response = await authApi.login(credentials);

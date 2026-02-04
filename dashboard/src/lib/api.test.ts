@@ -213,3 +213,184 @@ describe('executionApi', () => {
     expect(typeof executionApi.complete).toBe('function');
   });
 });
+
+describe('authApi', () => {
+  it('exports authApi object with all methods', async () => {
+    const { authApi } = await import('./api');
+    expect(authApi).toBeDefined();
+    expect(typeof authApi.login).toBe('function');
+    expect(typeof authApi.refresh).toBe('function');
+    expect(typeof authApi.logout).toBe('function');
+    expect(typeof authApi.me).toBe('function');
+  });
+});
+
+describe('Token Refresh Interceptor Logic', () => {
+  const originalLocalStorage = global.localStorage;
+  const originalLocation = global.location;
+  let store: Record<string, string> = {};
+
+  beforeEach(() => {
+    store = {};
+    const mockLocalStorage = {
+      getItem: vi.fn((key: string) => store[key] || null),
+      setItem: vi.fn((key: string, value: string) => {
+        store[key] = value;
+      }),
+      removeItem: vi.fn((key: string) => {
+        delete store[key];
+      }),
+      clear: vi.fn(),
+      length: 0,
+      key: vi.fn(),
+    };
+    Object.defineProperty(global, 'localStorage', {
+      value: mockLocalStorage,
+      writable: true,
+    });
+    Object.defineProperty(global, 'location', {
+      value: { href: 'http://localhost:3000/dashboard', pathname: '/dashboard' },
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(global, 'localStorage', {
+      value: originalLocalStorage,
+      writable: true,
+    });
+    Object.defineProperty(global, 'location', {
+      value: originalLocation,
+      writable: true,
+    });
+  });
+
+  it('redirects to login when 401 on auth/refresh endpoint', async () => {
+    vi.resetModules();
+    const { api } = await import('./api');
+
+    const interceptors = api.interceptors.response as unknown as {
+      handlers: Array<{
+        fulfilled: (response: unknown) => unknown;
+        rejected: (error: unknown) => Promise<unknown>;
+      }>;
+    };
+    const errorHandler = interceptors.handlers[0].rejected;
+
+    const error = {
+      config: { url: '/auth/refresh', _retry: false },
+      response: { status: HttpStatusCode.Unauthorized },
+    };
+
+    await expect(errorHandler(error)).rejects.toBe(error);
+    expect(localStorage.removeItem).toHaveBeenCalledWith('token');
+    expect(localStorage.removeItem).toHaveBeenCalledWith('refreshToken');
+    expect(global.location.href).toBe('/login');
+  });
+
+  it('redirects to login when 401 on auth/login endpoint', async () => {
+    vi.resetModules();
+    const { api } = await import('./api');
+
+    const interceptors = api.interceptors.response as unknown as {
+      handlers: Array<{
+        fulfilled: (response: unknown) => unknown;
+        rejected: (error: unknown) => Promise<unknown>;
+      }>;
+    };
+    const errorHandler = interceptors.handlers[0].rejected;
+
+    const error = {
+      config: { url: '/auth/login', _retry: false },
+      response: { status: HttpStatusCode.Unauthorized },
+    };
+
+    await expect(errorHandler(error)).rejects.toBe(error);
+    expect(localStorage.removeItem).toHaveBeenCalledWith('token');
+    expect(localStorage.removeItem).toHaveBeenCalledWith('refreshToken');
+    expect(global.location.href).toBe('/login');
+  });
+
+  it('redirects to login when 401 and no config', async () => {
+    vi.resetModules();
+    const { api } = await import('./api');
+
+    const interceptors = api.interceptors.response as unknown as {
+      handlers: Array<{
+        fulfilled: (response: unknown) => unknown;
+        rejected: (error: unknown) => Promise<unknown>;
+      }>;
+    };
+    const errorHandler = interceptors.handlers[0].rejected;
+
+    const error = {
+      config: undefined,
+      response: { status: HttpStatusCode.Unauthorized },
+    };
+
+    await expect(errorHandler(error)).rejects.toBe(error);
+    expect(localStorage.removeItem).toHaveBeenCalledWith('token');
+    expect(localStorage.removeItem).toHaveBeenCalledWith('refreshToken');
+    expect(global.location.href).toBe('/login');
+  });
+
+  it('does not redirect when already on login page', async () => {
+    Object.defineProperty(global, 'location', {
+      value: { href: 'http://localhost:3000/login', pathname: '/login' },
+      writable: true,
+    });
+
+    vi.resetModules();
+    const { api } = await import('./api');
+
+    const interceptors = api.interceptors.response as unknown as {
+      handlers: Array<{
+        fulfilled: (response: unknown) => unknown;
+        rejected: (error: unknown) => Promise<unknown>;
+      }>;
+    };
+    const errorHandler = interceptors.handlers[0].rejected;
+
+    const error = {
+      config: { url: '/some-endpoint', _retry: true },
+      response: { status: HttpStatusCode.Unauthorized },
+    };
+
+    await expect(errorHandler(error)).rejects.toBe(error);
+    expect(global.location.href).toBe('http://localhost:3000/login');
+  });
+
+  it('clears token and redirects when no refresh token available', async () => {
+    store['token'] = 'expired-token';
+    // No refreshToken in store
+
+    vi.resetModules();
+    const { api } = await import('./api');
+
+    const interceptors = api.interceptors.response as unknown as {
+      handlers: Array<{
+        fulfilled: (response: unknown) => unknown;
+        rejected: (error: unknown) => Promise<unknown>;
+      }>;
+    };
+    const errorHandler = interceptors.handlers[0].rejected;
+
+    const error = {
+      config: { url: '/some-endpoint', _retry: false, headers: {} },
+      response: { status: HttpStatusCode.Unauthorized },
+    };
+
+    // This will attempt token refresh but no refreshToken exists
+    await expect(errorHandler(error)).rejects.toThrow('No refresh token');
+    expect(localStorage.removeItem).toHaveBeenCalledWith('token');
+    expect(global.location.href).toBe('/login');
+  });
+});
+
+describe('API exports', () => {
+  it('exports api instance', async () => {
+    const { api } = await import('./api');
+    expect(api).toBeDefined();
+    expect(api.defaults.baseURL).toBeDefined();
+  });
+});

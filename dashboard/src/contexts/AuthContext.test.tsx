@@ -113,10 +113,108 @@ describe('AuthContext', () => {
     expect(authApi.me).toHaveBeenCalled();
   });
 
-  it('clears token when validation fails on mount', async () => {
+  it('clears token when validation fails on mount and no refresh token', async () => {
     store['token'] = 'invalid-token';
-    store['refreshToken'] = 'invalid-refresh';
     vi.mocked(authApi.me).mockRejectedValue(new Error('Unauthorized'));
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
+    });
+    expect(screen.getByTestId('authenticated')).toHaveTextContent(
+      'not-authenticated'
+    );
+    expect(localStorage.removeItem).toHaveBeenCalledWith('token');
+    expect(localStorage.removeItem).toHaveBeenCalledWith('refreshToken');
+  });
+
+  it('attempts token refresh when validation fails and refresh token exists', async () => {
+    store['token'] = 'expired-token';
+    store['refreshToken'] = 'valid-refresh-token';
+
+    // First call to me() fails
+    vi.mocked(authApi.me).mockRejectedValueOnce(new Error('Unauthorized'));
+    // Refresh succeeds
+    vi.mocked(authApi.refresh).mockResolvedValueOnce({
+      data: {
+        access_token: 'new-access-token',
+        refresh_token: 'new-refresh-token',
+        expires_in: 900,
+      },
+    } as never);
+    // Second call to me() succeeds with new token
+    vi.mocked(authApi.me).mockResolvedValueOnce({
+      data: {
+        id: 'user-1',
+        username: 'refresheduser',
+        email: 'refreshed@example.com',
+        role: 'admin',
+      },
+    } as never);
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
+    });
+    expect(screen.getByTestId('authenticated')).toHaveTextContent(
+      'authenticated'
+    );
+    expect(screen.getByTestId('user')).toHaveTextContent('refresheduser');
+    expect(authApi.refresh).toHaveBeenCalledWith('valid-refresh-token');
+    expect(localStorage.setItem).toHaveBeenCalledWith('token', 'new-access-token');
+    expect(localStorage.setItem).toHaveBeenCalledWith('refreshToken', 'new-refresh-token');
+  });
+
+  it('clears tokens when refresh fails', async () => {
+    store['token'] = 'expired-token';
+    store['refreshToken'] = 'expired-refresh-token';
+
+    // First call to me() fails
+    vi.mocked(authApi.me).mockRejectedValue(new Error('Unauthorized'));
+    // Refresh also fails
+    vi.mocked(authApi.refresh).mockRejectedValue(new Error('Refresh failed'));
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
+    });
+    expect(screen.getByTestId('authenticated')).toHaveTextContent(
+      'not-authenticated'
+    );
+    expect(authApi.refresh).toHaveBeenCalledWith('expired-refresh-token');
+    expect(localStorage.removeItem).toHaveBeenCalledWith('token');
+    expect(localStorage.removeItem).toHaveBeenCalledWith('refreshToken');
+  });
+
+  it('clears tokens when refresh succeeds but second me() fails', async () => {
+    store['token'] = 'expired-token';
+    store['refreshToken'] = 'valid-refresh-token';
+
+    // All me() calls fail
+    vi.mocked(authApi.me).mockRejectedValue(new Error('Unauthorized'));
+    // Refresh succeeds
+    vi.mocked(authApi.refresh).mockResolvedValueOnce({
+      data: {
+        access_token: 'new-access-token',
+        refresh_token: 'new-refresh-token',
+        expires_in: 900,
+      },
+    } as never);
 
     render(
       <AuthProvider>

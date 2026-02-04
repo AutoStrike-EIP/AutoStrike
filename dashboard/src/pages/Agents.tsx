@@ -22,10 +22,10 @@ export default function Agents() {
     queryFn: () => api.get('/agents').then(res => res.data),
   });
 
-  const serverUrl = window.location.origin.replace('http:', 'https:');
+  const serverUrl = globalThis.location.origin.replace('http:', 'https:');
   const commands = {
     linux: `./dist/autostrike-agent --server ${serverUrl}`,
-    windows: `.\\dist\\autostrike-agent.exe --server ${serverUrl}`,
+    windows: String.raw`.\\dist\\autostrike-agent.exe --server ${serverUrl}`,
     docker: `docker run autostrike-agent --server ${serverUrl}`,
   };
 
@@ -68,7 +68,7 @@ export default function Agents() {
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Linux / macOS</label>
+                  <span className="text-sm font-medium text-gray-700">Linux / macOS</span>
                   <div className="mt-1 flex items-center gap-2">
                     <code className="flex-1 bg-gray-100 px-3 py-2 rounded text-sm font-mono overflow-x-auto">
                       {commands.linux}
@@ -88,7 +88,7 @@ export default function Agents() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Windows</label>
+                  <span className="text-sm font-medium text-gray-700">Windows</span>
                   <div className="mt-1 flex items-center gap-2">
                     <code className="flex-1 bg-gray-100 px-3 py-2 rounded text-sm font-mono overflow-x-auto">
                       {commands.windows}
@@ -108,7 +108,7 @@ export default function Agents() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Docker</label>
+                  <span className="text-sm font-medium text-gray-700">Docker</span>
                   <div className="mt-1 flex items-center gap-2">
                     <code className="flex-1 bg-gray-100 px-3 py-2 rounded text-sm font-mono overflow-x-auto">
                       {commands.docker}

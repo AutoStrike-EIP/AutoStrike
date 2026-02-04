@@ -7,12 +7,13 @@ import {
   useMemo,
   ReactNode,
 } from 'react';
-import { authApi, LoginCredentials, User } from '../lib/api';
+import { authApi, healthApi, LoginCredentials, User } from '../lib/api';
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  authEnabled: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -26,8 +27,9 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authEnabled, setAuthEnabled] = useState(true); // Default to true for safety
 
-  const isAuthenticated = user !== null;
+  const isAuthenticated = user !== null || !authEnabled;
 
   // Try to refresh tokens when access token is invalid
   const tryRefreshToken = useCallback(async (): Promise<boolean> => {
@@ -48,9 +50,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
-  // Check for existing token on mount
+  // Check auth status on mount
   useEffect(() => {
     const checkAuth = async () => {
+      // First, check if auth is enabled on the server
+      try {
+        const healthResponse = await healthApi.check();
+        const serverAuthEnabled = healthResponse.data.auth_enabled;
+        setAuthEnabled(serverAuthEnabled);
+
+        if (!serverAuthEnabled) {
+          // Auth disabled on server - no need to check tokens
+          setIsLoading(false);
+          return;
+        }
+      } catch {
+        // If health check fails, assume auth is enabled for safety
+        setAuthEnabled(true);
+      }
+
+      // Auth is enabled - check for existing token
       const token = localStorage.getItem('token');
       if (!token) {
         setIsLoading(false);
@@ -117,10 +136,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       user,
       isAuthenticated,
       isLoading,
+      authEnabled,
       login,
       logout,
     }),
-    [user, isAuthenticated, isLoading, login, logout]
+    [user, isAuthenticated, isLoading, authEnabled, login, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -213,3 +213,17 @@ export const executionApi = {
    */
   complete: (id: string) => api.post(`/executions/${id}/complete`),
 };
+
+// Health check response
+export interface HealthResponse {
+  status: string;
+  auth_enabled: boolean;
+}
+
+// Health API (uses root path, not /api/v1)
+export const healthApi = {
+  /**
+   * Check server health and auth status
+   */
+  check: () => axios.get<HealthResponse>('/health'),
+};

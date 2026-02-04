@@ -100,9 +100,12 @@ func NewServerWithConfig(
 	router.Use(middleware.LoggingMiddleware(logger))
 	router.Use(middleware.RecoveryMiddleware(logger))
 
-	// Health check (always public)
+	// Health check (always public) - includes auth status for frontend
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		c.JSON(200, gin.H{
+			"status":       "ok",
+			"auth_enabled": config.EnableAuth,
+		})
 	})
 
 	// WebSocket routes (uses agent auth)

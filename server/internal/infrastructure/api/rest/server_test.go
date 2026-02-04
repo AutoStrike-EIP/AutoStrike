@@ -2,6 +2,7 @@ package rest
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -310,6 +311,52 @@ func TestServer_HealthEndpoint(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Verify response body contains auth_enabled
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse response body: %v", err)
+	}
+	if response["status"] != "ok" {
+		t.Errorf("Expected status 'ok', got %v", response["status"])
+	}
+	if response["auth_enabled"] != false {
+		t.Errorf("Expected auth_enabled false, got %v", response["auth_enabled"])
+	}
+}
+
+func TestServer_HealthEndpoint_AuthEnabled(t *testing.T) {
+	logger := zap.NewNop()
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
+
+	config := &ServerConfig{
+		EnableAuth: true,
+		JWTSecret:  "test-secret",
+	}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	req, _ := http.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse response body: %v", err)
+	}
+	if response["auth_enabled"] != true {
+		t.Errorf("Expected auth_enabled true, got %v", response["auth_enabled"])
 	}
 }
 

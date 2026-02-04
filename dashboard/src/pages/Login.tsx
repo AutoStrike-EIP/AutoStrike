@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -12,11 +12,18 @@ export default function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const { login } = useAuth();
+  const { login, authEnabled, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const from = (location.state as LocationState)?.from?.pathname || '/dashboard';
+
+  // Redirect to dashboard if auth is disabled
+  useEffect(() => {
+    if (!authLoading && !authEnabled) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [authEnabled, authLoading, navigate]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

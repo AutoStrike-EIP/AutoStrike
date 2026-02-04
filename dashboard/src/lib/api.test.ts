@@ -430,3 +430,11 @@ describe('API exports', () => {
     expect(api.defaults.baseURL).toBeDefined();
   });
 });
+
+describe('healthApi', () => {
+  it('exports healthApi object with check method', async () => {
+    const { healthApi } = await import('./api');
+    expect(healthApi).toBeDefined();
+    expect(typeof healthApi.check).toBe('function');
+  });
+});

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { AuthProvider, useAuth } from './AuthContext';
-import { authApi } from '../lib/api';
+import { authApi, healthApi } from '../lib/api';
 
 // Mock the API
 vi.mock('../lib/api', () => ({
@@ -11,17 +11,23 @@ vi.mock('../lib/api', () => ({
     logout: vi.fn(),
     refresh: vi.fn(),
   },
+  healthApi: {
+    check: vi.fn(),
+  },
 }));
 
 // Helper component to test the hook
 function TestComponent() {
-  const { user, isAuthenticated, isLoading, login, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, authEnabled, login, logout } = useAuth();
 
   return (
     <div>
       <div data-testid="loading">{isLoading ? 'loading' : 'not-loading'}</div>
       <div data-testid="authenticated">
         {isAuthenticated ? 'authenticated' : 'not-authenticated'}
+      </div>
+      <div data-testid="auth-enabled">
+        {authEnabled ? 'auth-enabled' : 'auth-disabled'}
       </div>
       <div data-testid="user">{user ? user.username : 'no-user'}</div>
       <button
@@ -62,6 +68,10 @@ describe('AuthContext', () => {
       writable: true,
     });
     vi.clearAllMocks();
+    // Default: auth is enabled
+    vi.mocked(healthApi.check).mockResolvedValue({
+      data: { status: 'ok', auth_enabled: true },
+    } as never);
   });
 
   afterEach(() => {
@@ -348,6 +358,45 @@ describe('AuthContext', () => {
       );
     });
     expect(localStorage.removeItem).toHaveBeenCalledWith('token');
+  });
+
+  it('bypasses auth when server has auth disabled', async () => {
+    vi.mocked(healthApi.check).mockResolvedValue({
+      data: { status: 'ok', auth_enabled: false },
+    } as never);
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
+    });
+    // Should be authenticated even without token when auth is disabled
+    expect(screen.getByTestId('authenticated')).toHaveTextContent('authenticated');
+    expect(screen.getByTestId('auth-enabled')).toHaveTextContent('auth-disabled');
+    expect(screen.getByTestId('user')).toHaveTextContent('no-user');
+    // Should not attempt to validate tokens
+    expect(authApi.me).not.toHaveBeenCalled();
+  });
+
+  it('assumes auth enabled when health check fails', async () => {
+    vi.mocked(healthApi.check).mockRejectedValue(new Error('Network error'));
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
+    });
+    // Should assume auth is enabled for safety
+    expect(screen.getByTestId('auth-enabled')).toHaveTextContent('auth-enabled');
+    expect(screen.getByTestId('authenticated')).toHaveTextContent('not-authenticated');
   });
 });
 

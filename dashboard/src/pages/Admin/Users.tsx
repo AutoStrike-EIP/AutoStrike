@@ -393,8 +393,9 @@ export default function Users() {
           <form onSubmit={handleCreate} className="space-y-4">
             {formError && <ErrorAlert message={formError} />}
             <div>
-              <label className="block text-sm font-medium text-gray-700">Username</label>
+              <label htmlFor="create-username" className="block text-sm font-medium text-gray-700">Username</label>
               <input
+                id="create-username"
                 type="text"
                 required
                 minLength={3}
@@ -404,8 +405,9 @@ export default function Users() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Email</label>
+              <label htmlFor="create-email" className="block text-sm font-medium text-gray-700">Email</label>
               <input
+                id="create-email"
                 type="email"
                 required
                 value={createForm.email}
@@ -414,8 +416,9 @@ export default function Users() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Password</label>
+              <label htmlFor="create-password" className="block text-sm font-medium text-gray-700">Password</label>
               <input
+                id="create-password"
                 type="password"
                 required
                 minLength={8}
@@ -426,8 +429,9 @@ export default function Users() {
               <p className="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Role</label>
+              <label htmlFor="create-role" className="block text-sm font-medium text-gray-700">Role</label>
               <select
+                id="create-role"
                 value={createForm.role}
                 onChange={(e) =>
                   setCreateForm({ ...createForm, role: e.target.value as UserRole })
@@ -459,8 +463,9 @@ export default function Users() {
           <form onSubmit={handleEdit} className="space-y-4">
             {formError && <ErrorAlert message={formError} />}
             <div>
-              <label className="block text-sm font-medium text-gray-700">Username</label>
+              <label htmlFor="edit-username" className="block text-sm font-medium text-gray-700">Username</label>
               <input
+                id="edit-username"
                 type="text"
                 required
                 minLength={3}
@@ -470,8 +475,9 @@ export default function Users() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Email</label>
+              <label htmlFor="edit-email" className="block text-sm font-medium text-gray-700">Email</label>
               <input
+                id="edit-email"
                 type="email"
                 required
                 value={editForm.email || ''}
@@ -500,8 +506,9 @@ export default function Users() {
               Change role for <strong>{selectedUser.username}</strong>
             </p>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Role</label>
+              <label htmlFor="change-role" className="block text-sm font-medium text-gray-700">Role</label>
               <select
+                id="change-role"
                 value={roleForm.role}
                 onChange={(e) => setRoleForm({ role: e.target.value as UserRole })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
@@ -534,8 +541,9 @@ export default function Users() {
               Reset password for <strong>{selectedUser.username}</strong>
             </p>
             <div>
-              <label className="block text-sm font-medium text-gray-700">New Password</label>
+              <label htmlFor="reset-password" className="block text-sm font-medium text-gray-700">New Password</label>
               <input
+                id="reset-password"
                 type="password"
                 required
                 minLength={8}

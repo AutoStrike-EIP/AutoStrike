@@ -458,10 +458,11 @@ function ScheduleFormModal({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="schedule-name" className="block text-sm font-medium text-gray-700 mb-1">
               Name *
             </label>
             <input
+              id="schedule-name"
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -471,10 +472,11 @@ function ScheduleFormModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="schedule-description" className="block text-sm font-medium text-gray-700 mb-1">
               Description
             </label>
             <textarea
+              id="schedule-description"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               className="input"
@@ -483,10 +485,11 @@ function ScheduleFormModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="schedule-scenario" className="block text-sm font-medium text-gray-700 mb-1">
               Scenario *
             </label>
             <select
+              id="schedule-scenario"
               value={formData.scenario_id}
               onChange={(e) => setFormData({ ...formData, scenario_id: e.target.value })}
               className="input"
@@ -502,10 +505,11 @@ function ScheduleFormModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="schedule-frequency" className="block text-sm font-medium text-gray-700 mb-1">
               Frequency *
             </label>
             <select
+              id="schedule-frequency"
               value={formData.frequency}
               onChange={(e) =>
                 setFormData({ ...formData, frequency: e.target.value as ScheduleFrequency })
@@ -522,10 +526,11 @@ function ScheduleFormModal({
 
           {formData.frequency === 'cron' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="schedule-cron" className="block text-sm font-medium text-gray-700 mb-1">
                 Cron Expression *
               </label>
               <input
+                id="schedule-cron"
                 type="text"
                 value={formData.cron_expr}
                 onChange={(e) => setFormData({ ...formData, cron_expr: e.target.value })}
@@ -541,10 +546,11 @@ function ScheduleFormModal({
 
           {!isEditMode && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="schedule-start-at" className="block text-sm font-medium text-gray-700 mb-1">
                 Start At (optional)
               </label>
               <input
+                id="schedule-start-at"
                 type="datetime-local"
                 value={formData.start_at}
                 onChange={(e) => {
@@ -560,10 +566,11 @@ function ScheduleFormModal({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="schedule-agent" className="block text-sm font-medium text-gray-700 mb-1">
               Agent (optional)
             </label>
             <input
+              id="schedule-agent"
               type="text"
               value={formData.agent_paw}
               onChange={(e) => setFormData({ ...formData, agent_paw: e.target.value })}

@@ -235,10 +235,11 @@ export default function Settings() {
                 <>
                   {/* Channel Selection */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="notif-channel" className="block text-sm font-medium text-gray-700 mb-1">
                       Notification Channel
                     </label>
                     <select
+                      id="notif-channel"
                       className="input"
                       value={notifSettings.channel}
                       onChange={(e) =>
@@ -253,10 +254,11 @@ export default function Settings() {
                   {/* Email Settings */}
                   {notifSettings.channel === 'email' && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="notif-email" className="block text-sm font-medium text-gray-700 mb-1">
                         Email Address
                       </label>
                       <input
+                        id="notif-email"
                         type="email"
                         className="input"
                         placeholder="your@email.com"
@@ -275,10 +277,11 @@ export default function Settings() {
                   {/* Webhook Settings */}
                   {notifSettings.channel === 'webhook' && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="notif-webhook" className="block text-sm font-medium text-gray-700 mb-1">
                         Webhook URL
                       </label>
                       <input
+                        id="notif-webhook"
                         type="url"
                         className="input"
                         placeholder="https://your-webhook-url.com/notify"

@@ -114,9 +114,12 @@ GET /health
 
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "auth_enabled": true
 }
 ```
+
+The `auth_enabled` field indicates whether JWT authentication is enabled on the server.
 
 ---
 

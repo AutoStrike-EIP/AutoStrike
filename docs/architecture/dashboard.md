@@ -279,14 +279,14 @@ npm run build     # Production build
 npm run preview   # Preview build
 npm run lint      # ESLint check
 npm run type-check # TypeScript check
-npm test          # Vitest tests (217 tests)
+npm test          # Vitest tests (269 tests)
 ```
 
 ---
 
 ## Testing
 
-217 tests across 18 test files:
+269 tests across 21 test files:
 
 - Component tests (Layout, MitreMatrix, RunExecutionModal)
 - Page tests (Dashboard, Agents, Techniques, Scenarios, Executions, etc.)

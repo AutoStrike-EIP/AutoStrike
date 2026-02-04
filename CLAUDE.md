@@ -130,7 +130,7 @@ Base URL: `https://localhost:8443/api/v1`
 ### Core API (protected when auth enabled)
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Health check (returns `{"status": "ok"}`) |
+| `/health` | GET | Health check (returns `{"status": "ok", "auth_enabled": bool}`) |
 | `/agents` | GET | List agents (`?all=true` for offline too) |
 | `/agents/:paw` | GET | Get agent details |
 | `/agents` | POST | Register agent |
@@ -246,7 +246,7 @@ All techniques are **safe mode compatible** (non-destructive).
   - rest/server: 90.0%
   - sqlite: 74.2%
 - **Agent**: 61 unit tests (`cargo test`)
-- **Dashboard**: 217 tests across 18 files (`npm test`)
+- **Dashboard**: 269 tests across 21 files (`npm test`)
 
 ```bash
 # Run all tests

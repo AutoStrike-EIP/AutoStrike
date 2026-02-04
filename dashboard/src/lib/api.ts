@@ -40,13 +40,24 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Skip refresh for auth endpoints to avoid infinite loops
-    if (
-      error.response?.status === HttpStatusCode.Unauthorized &&
-      !originalRequest._retry &&
-      !originalRequest.url?.includes('/auth/refresh') &&
-      !originalRequest.url?.includes('/auth/login')
-    ) {
+    // Handle 401 errors
+    if (error.response?.status === HttpStatusCode.Unauthorized) {
+      // If no config or already retried or auth endpoint, just clear tokens and redirect
+      if (
+        !originalRequest ||
+        originalRequest._retry ||
+        originalRequest.url?.includes('/auth/refresh') ||
+        originalRequest.url?.includes('/auth/login')
+      ) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        if (globalThis.location?.pathname !== '/login') {
+          globalThis.location.href = '/login';
+        }
+        return Promise.reject(error);
+      }
+
+      // Try to refresh the token
       if (isRefreshing) {
         // Wait for the refresh to complete
         return new Promise((resolve, reject) => {
@@ -81,7 +92,7 @@ api.interceptors.response.use(
           processQueue(refreshError, null);
           localStorage.removeItem('token');
           localStorage.removeItem('refreshToken');
-          if (globalThis.location.pathname !== '/login') {
+          if (globalThis.location?.pathname !== '/login') {
             globalThis.location.href = '/login';
           }
           return Promise.reject(refreshError);
@@ -91,7 +102,7 @@ api.interceptors.response.use(
       } else {
         // No refresh token available
         localStorage.removeItem('token');
-        if (globalThis.location.pathname !== '/login') {
+        if (globalThis.location?.pathname !== '/login') {
           globalThis.location.href = '/login';
         }
       }

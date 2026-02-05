@@ -84,7 +84,7 @@ export default function Techniques() {
   });
 
   const importMutation = useMutation({
-    mutationFn: (techniques: Omit<TechniqueType, 'id'>[]) => techniqueApi.import(techniques),
+    mutationFn: (techniques: TechniqueType[]) => techniqueApi.import(techniques),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['techniques'] });
       setImportResult({

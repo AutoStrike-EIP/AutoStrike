@@ -319,7 +319,7 @@ export const techniqueApi = {
   /**
    * Import techniques from JSON
    */
-  import: (techniques: Omit<Technique, 'id'>[]) =>
+  import: (techniques: Technique[]) =>
     api.post<ImportTechniquesResponse>('/techniques/import/json', { techniques }),
 };
 

@@ -1,6 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Modal, MODAL_OVERLAY_CLASS, MODAL_CONTAINER_CLASS } from './Modal';
+
+// Mock showModal since JSDOM doesn't fully support it
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = vi.fn();
+  HTMLDialogElement.prototype.close = vi.fn();
+});
 
 describe('Modal', () => {
   const defaultProps = {
@@ -14,7 +20,7 @@ describe('Modal', () => {
   });
 
   describe('MODAL_OVERLAY_CLASS', () => {
-    it('contains fixed positioning and overlay styles', () => {
+    it('contains overlay styles for reference', () => {
       expect(MODAL_OVERLAY_CLASS).toContain('fixed');
       expect(MODAL_OVERLAY_CLASS).toContain('inset-0');
       expect(MODAL_OVERLAY_CLASS).toContain('bg-black/50');
@@ -41,6 +47,11 @@ describe('Modal', () => {
       expect(screen.getByText('Modal content')).toBeInTheDocument();
     });
 
+    it('calls showModal on mount', () => {
+      render(<Modal {...defaultProps} />);
+      expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalled();
+    });
+
     it('calls onClose when close button is clicked', () => {
       render(<Modal {...defaultProps} />);
       const closeButton = screen.getByLabelText('Close modal');
@@ -50,14 +61,14 @@ describe('Modal', () => {
 
     it('renders with default maxWidth', () => {
       const { container } = render(<Modal {...defaultProps} />);
-      const modalContainer = container.querySelector('.max-w-md');
-      expect(modalContainer).toBeInTheDocument();
+      const dialog = container.querySelector('dialog');
+      expect(dialog).toHaveClass('max-w-md');
     });
 
     it('renders with custom maxWidth', () => {
       const { container } = render(<Modal {...defaultProps} maxWidth="max-w-lg" />);
-      const modalContainer = container.querySelector('.max-w-lg');
-      expect(modalContainer).toBeInTheDocument();
+      const dialog = container.querySelector('dialog');
+      expect(dialog).toHaveClass('max-w-lg');
     });
 
     it('does not render footer when not provided', () => {
@@ -102,10 +113,11 @@ describe('Modal', () => {
       expect(contentArea.length).toBeGreaterThanOrEqual(2); // header + content
     });
 
-    it('calls onClose when clicking overlay', () => {
+    it('calls onClose when clicking on dialog backdrop', () => {
       const { container } = render(<Modal {...defaultProps} />);
-      const overlay = container.firstChild as HTMLElement;
-      fireEvent.click(overlay);
+      const dialog = container.querySelector('dialog') as HTMLDialogElement;
+      // Simulate click on the dialog itself (backdrop area)
+      fireEvent.click(dialog);
       expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
     });
 
@@ -116,23 +128,29 @@ describe('Modal', () => {
       expect(defaultProps.onClose).not.toHaveBeenCalled();
     });
 
-    it('calls onClose when Escape key is pressed', () => {
-      render(<Modal {...defaultProps} />);
-      fireEvent.keyDown(document, { key: 'Escape' });
+    it('calls onClose when cancel event is triggered (Escape key)', () => {
+      const { container } = render(<Modal {...defaultProps} />);
+      const dialog = container.querySelector('dialog') as HTMLDialogElement;
+      fireEvent(dialog, new Event('cancel', { bubbles: true }));
       expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('has proper accessibility attributes', () => {
-      render(<Modal {...defaultProps} />);
-      const dialog = screen.getByRole('dialog');
-      expect(dialog).toHaveAttribute('aria-modal', 'true');
-      expect(dialog).toHaveAttribute('aria-labelledby', 'modal-title');
+    it('uses native dialog element', () => {
+      const { container } = render(<Modal {...defaultProps} />);
+      const dialog = container.querySelector('dialog');
+      expect(dialog).toBeInTheDocument();
     });
 
     it('has title with correct id for aria-labelledby', () => {
       render(<Modal {...defaultProps} />);
       const title = screen.getByText('Test Modal');
       expect(title).toHaveAttribute('id', 'modal-title');
+    });
+
+    it('has aria-labelledby pointing to title', () => {
+      const { container } = render(<Modal {...defaultProps} />);
+      const dialog = container.querySelector('dialog');
+      expect(dialog).toHaveAttribute('aria-labelledby', 'modal-title');
     });
   });
 });

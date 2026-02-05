@@ -1,8 +1,8 @@
-import { ReactNode, useCallback, useEffect } from 'react';
+import { ReactNode, useRef, useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
 /**
- * Standard modal overlay classes
+ * Standard modal overlay classes (for backdrop styling)
  */
 export const MODAL_OVERLAY_CLASS = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
 
@@ -26,54 +26,59 @@ interface ModalProps {
 
 /**
  * Reusable modal component with consistent styling.
+ * Uses native HTML dialog element for accessibility.
  * Includes header with title and close button, content area, and optional footer.
- * Supports closing via Escape key, overlay click, or close button.
+ * Supports closing via Escape key, backdrop click, or close button.
  */
 export function Modal({ title, onClose, children, maxWidth = 'max-w-md', footer }: ModalProps) {
-  // Handle Escape key to close modal
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      onClose();
-    }
-  }, [onClose]);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+    }
+  }, []);
+
+  // Handle click on backdrop (the dialog element itself, not its contents)
+  const handleDialogClick = (e: React.MouseEvent<HTMLDialogElement>) => {
+    if (e.target === dialogRef.current) {
+      onClose();
+    }
+  };
+
+  // Handle native dialog cancel event (Escape key)
+  const handleCancel = (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    onClose();
+  };
 
   return (
-    <div
-      className={MODAL_OVERLAY_CLASS}
-      onClick={onClose}
-      role="presentation"
+    <dialog
+      ref={dialogRef}
+      className={`${MODAL_CONTAINER_CLASS} ${maxWidth} w-full mx-4 p-0 backdrop:bg-black/50`}
+      onClick={handleDialogClick}
+      onCancel={handleCancel}
+      aria-labelledby="modal-title"
     >
-      <div
-        className={`${MODAL_CONTAINER_CLASS} ${maxWidth} w-full mx-4`}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-title"
-      >
-        <div className="flex items-center justify-between p-6 border-b">
-          <h2 id="modal-title" className="text-xl font-semibold">{title}</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg"
-            aria-label="Close modal"
-          >
-            <XMarkIcon className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="p-6">
-          {children}
-        </div>
-        {footer && (
-          <div className="flex justify-end gap-3 p-6 border-t">
-            {footer}
-          </div>
-        )}
+      <div className="flex items-center justify-between p-6 border-b">
+        <h2 id="modal-title" className="text-xl font-semibold">{title}</h2>
+        <button
+          onClick={onClose}
+          className="p-2 hover:bg-gray-100 rounded-lg"
+          aria-label="Close modal"
+        >
+          <XMarkIcon className="h-5 w-5" />
+        </button>
       </div>
-    </div>
+      <div className="p-6">
+        {children}
+      </div>
+      {footer && (
+        <div className="flex justify-end gap-3 p-6 border-t">
+          {footer}
+        </div>
+      )}
+    </dialog>
   );
 }

@@ -11,11 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Notification handler error messages
+// Notification handler error messages and routes
 const (
 	errNotifNotAuthenticated = "not authenticated"
 	errSettingsNotFound      = "settings not found"
 	errFailedToGetSettings   = "failed to get settings"
+	routeSettings            = "/settings"
 )
 
 // NotificationHandler handles notification-related HTTP requests
@@ -40,10 +41,10 @@ func (h *NotificationHandler) RegisterRoutes(router *gin.RouterGroup) {
 		notifications.POST("/read-all", h.MarkAllAsRead)
 
 		// Settings
-		notifications.GET("/settings", h.GetSettings)
-		notifications.POST("/settings", h.CreateSettings)
-		notifications.PUT("/settings", h.UpdateSettings)
-		notifications.DELETE("/settings", h.DeleteSettings)
+		notifications.GET(routeSettings, h.GetSettings)
+		notifications.POST(routeSettings, h.CreateSettings)
+		notifications.PUT(routeSettings, h.UpdateSettings)
+		notifications.DELETE(routeSettings, h.DeleteSettings)
 
 		// SMTP config (admin only)
 		notifications.GET("/smtp", h.GetSMTPConfig)

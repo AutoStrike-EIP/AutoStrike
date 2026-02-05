@@ -96,10 +96,24 @@ func main() {
 	if jwtSecret != "" {
 		authService = application.NewAuthService(userRepo, jwtSecret)
 		// Ensure default admin user exists
-		if err := authService.EnsureDefaultAdmin(context.Background()); err != nil {
+		result, err := authService.EnsureDefaultAdmin(context.Background())
+		if err != nil {
 			logger.Warn("Failed to create default admin user", zap.Error(err))
+		} else if result.Created {
+			if result.GeneratedPassword != "" {
+				// Log the generated password so the operator can use it
+				logger.Info("=======================================================")
+				logger.Info("Default admin user created with auto-generated password")
+				logger.Info("Username: admin")
+				logger.Info("Password: " + result.GeneratedPassword)
+				logger.Info("IMPORTANT: Change this password immediately after first login!")
+				logger.Info("Or set DEFAULT_ADMIN_PASSWORD env var before first startup.")
+				logger.Info("=======================================================")
+			} else {
+				logger.Info("Default admin user created with password from DEFAULT_ADMIN_PASSWORD env var")
+			}
 		} else {
-			logger.Info("Default admin user ensured")
+			logger.Debug("Default admin user already exists, skipping creation")
 		}
 	}
 

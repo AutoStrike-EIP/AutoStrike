@@ -167,33 +167,49 @@ func (s *AuthService) CreateUser(ctx context.Context, username, email, password 
 	return user, nil
 }
 
+// DefaultAdminResult contains information about the default admin creation
+type DefaultAdminResult struct {
+	Created           bool   // Whether a new admin was created
+	GeneratedPassword string // The password if it was auto-generated (empty if from env var or no user created)
+}
+
 // EnsureDefaultAdmin creates a default admin user if no users exist
 // Password is sourced from DEFAULT_ADMIN_PASSWORD env var, or a secure random password is generated
-func (s *AuthService) EnsureDefaultAdmin(ctx context.Context) error {
+// Returns information about whether admin was created and the generated password (if any)
+func (s *AuthService) EnsureDefaultAdmin(ctx context.Context) (*DefaultAdminResult, error) {
 	users, err := s.userRepo.FindAll(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// If there are already users, don't create default admin
 	if len(users) > 0 {
-		return nil
+		return &DefaultAdminResult{Created: false}, nil
 	}
 
 	// Get password from environment variable or generate a secure random one
 	password := os.Getenv("DEFAULT_ADMIN_PASSWORD")
+	generatedPassword := ""
 	if password == "" {
 		// Generate a secure random password (24 bytes = 32 chars base64)
 		randomBytes := make([]byte, 24)
 		if _, err := rand.Read(randomBytes); err != nil {
-			return err
+			return nil, err
 		}
 		password = base64.URLEncoding.EncodeToString(randomBytes)
+		generatedPassword = password // Track that we generated this password
 	}
 
 	// Create default admin user
 	_, err = s.CreateUser(ctx, "admin", "admin@autostrike.local", password, entity.RoleAdmin)
-	return err
+	if err != nil {
+		return nil, err
+	}
+
+	return &DefaultAdminResult{
+		Created:           true,
+		GeneratedPassword: generatedPassword,
+	}, nil
 }
 
 // generateTokens creates access and refresh tokens for a user

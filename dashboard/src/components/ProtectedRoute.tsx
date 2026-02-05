@@ -9,7 +9,10 @@ interface ProtectedRouteProps {
   readonly allowedRoles?: UserRole[];
 }
 
-// Role hierarchy: admin > rssi > operator > analyst > viewer
+/**
+ * Role hierarchy levels (higher number = more privileges)
+ * admin (5) > rssi (4) > operator (3) > analyst (2) > viewer (1)
+ */
 const roleHierarchy: Record<UserRole, number> = {
   admin: 5,
   rssi: 4,
@@ -18,15 +21,39 @@ const roleHierarchy: Record<UserRole, number> = {
   viewer: 1,
 };
 
+/**
+ * Checks if a user has the required role to access a resource.
+ *
+ * This function supports TWO MODES of authorization:
+ *
+ * 1. **Hierarchy mode** (using `requiredRole`):
+ *    - Uses role hierarchy where higher roles can access lower role resources
+ *    - Example: requiredRole="operator" allows admin, rssi, and operator
+ *    - Use this for "minimum required privilege" checks
+ *
+ * 2. **Exact match mode** (using `allowedRoles`):
+ *    - Only the explicitly listed roles are allowed (no hierarchy)
+ *    - Example: allowedRoles=["operator"] allows ONLY operator, not admin
+ *    - Use this for role-specific features (e.g., only analysts can export)
+ *
+ * If both are provided, `allowedRoles` takes precedence (exact match mode).
+ * If neither is provided, any authenticated user is allowed.
+ *
+ * @param userRole - The current user's role
+ * @param requiredRole - Minimum role required (hierarchy mode)
+ * @param allowedRoles - Exact list of allowed roles (exact match mode)
+ * @returns true if the user has access, false otherwise
+ */
 function hasRequiredRole(userRole: UserRole | undefined, requiredRole?: UserRole, allowedRoles?: UserRole[]): boolean {
   if (!userRole) return false;
 
-  // If allowedRoles is specified, check if user's role is in the list
+  // Exact match mode: check if user's role is in the allowed list
+  // Takes precedence over hierarchy mode when both are specified
   if (allowedRoles && allowedRoles.length > 0) {
     return allowedRoles.includes(userRole);
   }
 
-  // If requiredRole is specified, check role hierarchy
+  // Hierarchy mode: check if user's role level meets the minimum required
   if (requiredRole) {
     return roleHierarchy[userRole] >= roleHierarchy[requiredRole];
   }

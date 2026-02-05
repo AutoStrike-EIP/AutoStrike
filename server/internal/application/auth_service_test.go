@@ -429,10 +429,20 @@ func TestAuthService_EnsureDefaultAdmin_CreatesAdmin(t *testing.T) {
 	service := NewAuthService(repo, "test-secret")
 
 	ctx := context.Background()
-	err := service.EnsureDefaultAdmin(ctx)
+	result, err := service.EnsureDefaultAdmin(ctx)
 
 	if err != nil {
 		t.Fatalf("EnsureDefaultAdmin failed: %v", err)
+	}
+
+	// Should indicate that admin was created
+	if !result.Created {
+		t.Error("Expected Created to be true")
+	}
+
+	// Should have generated a password (since no env var set)
+	if result.GeneratedPassword == "" {
+		t.Error("Expected GeneratedPassword to be set")
 	}
 
 	// Should have created one user
@@ -466,10 +476,20 @@ func TestAuthService_EnsureDefaultAdmin_SkipsIfUsersExist(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err := service.EnsureDefaultAdmin(ctx)
+	result, err := service.EnsureDefaultAdmin(ctx)
 
 	if err != nil {
 		t.Fatalf("EnsureDefaultAdmin failed: %v", err)
+	}
+
+	// Should indicate that no admin was created
+	if result.Created {
+		t.Error("Expected Created to be false")
+	}
+
+	// Should not have generated a password
+	if result.GeneratedPassword != "" {
+		t.Error("Expected GeneratedPassword to be empty")
 	}
 
 	// Should still have only one user (no new admin created)

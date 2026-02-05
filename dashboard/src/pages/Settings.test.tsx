@@ -386,6 +386,8 @@ describe('Notification Settings', () => {
     const toast = await import('react-hot-toast');
     vi.mocked(notificationApi.getSettings).mockResolvedValue({
       data: {
+        id: 'settings-123',
+        user_id: 'user-123',
         channel: 'email',
         enabled: true,
         email_address: 'test@example.com',
@@ -395,6 +397,8 @@ describe('Notification Settings', () => {
         notify_on_score_alert: true,
         score_alert_threshold: 70,
         notify_on_agent_offline: true,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       },
     } as never);
     vi.mocked(notificationApi.updateSettings).mockResolvedValue({ data: {} } as never);
@@ -418,6 +422,8 @@ describe('Notification Settings', () => {
     const toast = await import('react-hot-toast');
     vi.mocked(notificationApi.getSettings).mockResolvedValue({
       data: {
+        id: 'settings-456',
+        user_id: 'user-123',
         channel: 'email',
         enabled: true,
         email_address: '',
@@ -427,6 +433,8 @@ describe('Notification Settings', () => {
         notify_on_score_alert: true,
         score_alert_threshold: 70,
         notify_on_agent_offline: true,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       },
     } as never);
     vi.mocked(notificationApi.updateSettings).mockRejectedValue(new Error('Save failed'));

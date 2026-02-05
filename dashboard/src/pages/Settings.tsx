@@ -146,8 +146,8 @@ export default function Settings() {
   // Save notification settings mutation
   const saveNotifMutation = useMutation({
     mutationFn: async (data: NotificationSettingsRequest) => {
-      if (hasExistingNotifSettings) {
-        return notificationApi.updateSettings(data);
+      if (hasExistingNotifSettings && notificationSettingsData?.id) {
+        return notificationApi.updateSettings(notificationSettingsData.id, data);
       } else {
         return notificationApi.createSettings(data);
       }

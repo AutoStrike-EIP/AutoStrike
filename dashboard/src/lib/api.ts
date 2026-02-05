@@ -423,17 +423,12 @@ export const permissionApi = {
   /**
    * Get the complete permission matrix
    */
-  getMatrix: () => api.get<PermissionMatrix>('/permissions'),
+  getMatrix: () => api.get<PermissionMatrix>('/permissions/matrix'),
 
   /**
    * Get current user's permissions
    */
   getMyPermissions: () => api.get<MyPermissionsResponse>('/permissions/me'),
-
-  /**
-   * Get all roles with their permissions
-   */
-  getRoles: () => api.get<RolesResponse>('/permissions/roles'),
 };
 
 // Health check response
@@ -515,7 +510,7 @@ export const analyticsApi = {
    * Compare scores between current and previous period
    */
   compare: (days: number = 7) =>
-    api.get<ScoreComparison>('/analytics/compare', { params: { days } }),
+    api.get<ScoreComparison>('/analytics/comparison', { params: { days } }),
 
   /**
    * Get score trend over time
@@ -637,13 +632,13 @@ export const notificationApi = {
   /**
    * Update notification settings
    */
-  updateSettings: (data: NotificationSettingsRequest) =>
-    api.put<NotificationSettings>('/notifications/settings', data),
+  updateSettings: (id: string, data: NotificationSettingsRequest) =>
+    api.put<NotificationSettings>(`/notifications/settings/${id}`, data),
 
   /**
    * Delete notification settings
    */
-  deleteSettings: () => api.delete('/notifications/settings'),
+  deleteSettings: (id: string) => api.delete(`/notifications/settings/${id}`),
 
   /**
    * Get SMTP configuration

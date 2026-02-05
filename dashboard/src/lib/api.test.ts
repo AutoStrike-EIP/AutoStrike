@@ -475,7 +475,6 @@ describe('permissionApi', () => {
     expect(permissionApi).toBeDefined();
     expect(typeof permissionApi.getMatrix).toBe('function');
     expect(typeof permissionApi.getMyPermissions).toBe('function');
-    expect(typeof permissionApi.getRoles).toBe('function');
   });
 });
 

@@ -8,9 +8,11 @@ import {
   XMarkIcon,
   ExclamationTriangleIcon,
   CheckCircleIcon,
+  PlusIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 import { api, executionApi, scenarioApi, ImportScenariosRequest, ScenarioPhase } from '../lib/api';
-import { Scenario } from '../types';
+import { Scenario, Technique } from '../types';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { RunExecutionModal } from '../components/RunExecutionModal';
@@ -54,15 +56,29 @@ export default function Scenarios() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [scenarioToRun, setScenarioToRun] = useState<Scenario | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [importResult, setImportResult] = useState<{
     imported: number;
     failed: number;
     errors?: string[];
   } | null>(null);
 
+  // Create scenario form state
+  const [newScenario, setNewScenario] = useState({
+    name: '',
+    description: '',
+    tags: '',
+    phases: [{ name: 'Phase 1', techniques: [] as string[] }],
+  });
+
   const { data: scenarios, isLoading } = useQuery<Scenario[]>({
     queryKey: ['scenarios'],
     queryFn: () => api.get('/scenarios').then(res => res.data),
+  });
+
+  const { data: techniques } = useQuery<Technique[]>({
+    queryKey: ['techniques'],
+    queryFn: () => api.get('/techniques').then(res => res.data),
   });
 
   const startMutation = useMutation({
@@ -103,6 +119,19 @@ export default function Scenarios() {
           errors: data.errors,
         });
       }
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: Omit<Scenario, 'id'>) => scenarioApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scenarios'] });
+      toast.success('Scenario created successfully');
+      setShowCreateModal(false);
+      setNewScenario({ name: '', description: '', tags: '', phases: [{ name: 'Phase 1', techniques: [] }] });
+    },
+    onError: (error: { response?: { data?: { error?: string } } }) => {
+      toast.error(error.response?.data?.error || 'Failed to create scenario');
     },
   });
 
@@ -188,6 +217,69 @@ export default function Scenarios() {
     setImportResult(null);
   };
 
+  const handleCreateClick = () => {
+    setShowCreateModal(true);
+  };
+
+  const handleAddPhase = () => {
+    setNewScenario(prev => ({
+      ...prev,
+      phases: [...prev.phases, { name: `Phase ${prev.phases.length + 1}`, techniques: [] }],
+    }));
+  };
+
+  const handleRemovePhase = (index: number) => {
+    setNewScenario(prev => ({
+      ...prev,
+      phases: prev.phases.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handlePhaseNameChange = (index: number, name: string) => {
+    setNewScenario(prev => ({
+      ...prev,
+      phases: prev.phases.map((p, i) => (i === index ? { ...p, name } : p)),
+    }));
+  };
+
+  const handleTechniqueToggle = (phaseIndex: number, techniqueId: string) => {
+    setNewScenario(prev => ({
+      ...prev,
+      phases: prev.phases.map((p, i) => {
+        if (i !== phaseIndex) return p;
+        const hasTechnique = p.techniques.includes(techniqueId);
+        return {
+          ...p,
+          techniques: hasTechnique
+            ? p.techniques.filter(t => t !== techniqueId)
+            : [...p.techniques, techniqueId],
+        };
+      }),
+    }));
+  };
+
+  const handleCreateSubmit = () => {
+    if (!newScenario.name.trim()) {
+      toast.error('Scenario name is required');
+      return;
+    }
+    if (newScenario.phases.every(p => p.techniques.length === 0)) {
+      toast.error('At least one technique is required');
+      return;
+    }
+
+    createMutation.mutate({
+      name: newScenario.name,
+      description: newScenario.description,
+      tags: newScenario.tags.split(',').map(t => t.trim()).filter(Boolean),
+      phases: newScenario.phases.map((p, i) => ({
+        name: p.name,
+        techniques: p.techniques,
+        order: i + 1,
+      })),
+    });
+  };
+
   if (isLoading) {
     return <LoadingState message="Loading scenarios..." />;
   }
@@ -212,7 +304,10 @@ export default function Scenarios() {
             <ArrowDownTrayIcon className="h-5 w-5" />
             Export
           </button>
-          <button className="btn-primary">Create Scenario</button>
+          <button onClick={handleCreateClick} className="btn-primary flex items-center gap-2">
+            <PlusIcon className="h-5 w-5" />
+            Create Scenario
+          </button>
         </div>
       </div>
 
@@ -370,6 +465,136 @@ export default function Scenarios() {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Scenario Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h2 className="text-xl font-semibold">Create Scenario</h2>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="space-y-6">
+                {/* Name & Description */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                    <input
+                      type="text"
+                      value={newScenario.name}
+                      onChange={(e) => setNewScenario(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="My Attack Scenario"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tags (comma-separated)</label>
+                    <input
+                      type="text"
+                      value={newScenario.tags}
+                      onChange={(e) => setNewScenario(prev => ({ ...prev, tags: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="discovery, safe, windows"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <textarea
+                    value={newScenario.description}
+                    onChange={(e) => setNewScenario(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    rows={2}
+                    placeholder="Describe the purpose of this scenario..."
+                  />
+                </div>
+
+                {/* Phases */}
+                <div>
+                  <div className="flex justify-between items-center mb-3">
+                    <label className="block text-sm font-medium text-gray-700">Phases</label>
+                    <button
+                      type="button"
+                      onClick={handleAddPhase}
+                      className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                    >
+                      <PlusIcon className="h-4 w-4" /> Add Phase
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    {newScenario.phases.map((phase, phaseIndex) => (
+                      <div key={phaseIndex} className="border rounded-lg p-4">
+                        <div className="flex justify-between items-center mb-3">
+                          <input
+                            type="text"
+                            value={phase.name}
+                            onChange={(e) => handlePhaseNameChange(phaseIndex, e.target.value)}
+                            className="font-medium px-2 py-1 border rounded focus:ring-2 focus:ring-primary-500"
+                          />
+                          {newScenario.phases.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePhase(phaseIndex)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                          {techniques?.map((technique) => (
+                            <label
+                              key={technique.id}
+                              className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${
+                                phase.techniques.includes(technique.id) ? 'border-primary-500 bg-primary-50' : ''
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={phase.techniques.includes(technique.id)}
+                                onChange={() => handleTechniqueToggle(phaseIndex, technique.id)}
+                                className="rounded text-primary-600 focus:ring-primary-500"
+                              />
+                              <span className="text-sm truncate">
+                                <span className="font-mono text-xs text-gray-500">{technique.id}</span>
+                                <span className="ml-1">{technique.name}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                          {phase.techniques.length} technique(s) selected
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateSubmit}
+                disabled={createMutation.isPending}
+                className="btn-primary"
+              >
+                {createMutation.isPending ? 'Creating...' : 'Create Scenario'}
+              </button>
             </div>
           </div>
         </div>

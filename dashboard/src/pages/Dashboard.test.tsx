@@ -1,13 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Dashboard from './Dashboard';
-import { api } from '../lib/api';
+import { api, techniqueApi } from '../lib/api';
 
 // Mock the API
 vi.mock('../lib/api', () => ({
   api: {
     get: vi.fn(),
+  },
+  techniqueApi: {
+    getCoverage: vi.fn(),
   },
 }));
 
@@ -15,6 +18,13 @@ vi.mock('../lib/api', () => ({
 vi.mock('react-chartjs-2', () => ({
   Doughnut: () => <div data-testid="doughnut-chart">Chart</div>,
 }));
+
+// Mock matchMedia for SecurityScore animation
+const matchMediaMock = vi.fn().mockReturnValue({
+  matches: true, // Prefer reduced motion to disable animation
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+});
 
 const createTestQueryClient = () =>
   new QueryClient({
@@ -35,10 +45,16 @@ function renderWithClient(ui: React.ReactElement) {
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('matchMedia', matchMediaMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('renders dashboard title', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+    vi.mocked(techniqueApi.getCoverage).mockResolvedValue({ data: {} } as never);
 
     renderWithClient(<Dashboard />);
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
@@ -46,10 +62,12 @@ describe('Dashboard', () => {
 
   it('renders stats cards', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+    vi.mocked(techniqueApi.getCoverage).mockResolvedValue({ data: {} } as never);
 
     renderWithClient(<Dashboard />);
     expect(screen.getByText('Agents Online')).toBeInTheDocument();
-    expect(screen.getByText('Security Score')).toBeInTheDocument();
+    // SecurityScore label appears in both stat card and main section
+    expect(screen.getAllByText('Security Score').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Techniques Tested')).toBeInTheDocument();
     expect(screen.getByText('Executions Today')).toBeInTheDocument();
   });
@@ -66,6 +84,7 @@ describe('Dashboard', () => {
       }
       return Promise.resolve({ data: [] }) as never;
     });
+    vi.mocked(techniqueApi.getCoverage).mockResolvedValue({ data: {} } as never);
 
     renderWithClient(<Dashboard />);
 
@@ -95,11 +114,14 @@ describe('Dashboard', () => {
       }
       return Promise.resolve({ data: [] }) as never;
     });
+    vi.mocked(techniqueApi.getCoverage).mockResolvedValue({ data: {} } as never);
 
     renderWithClient(<Dashboard />);
 
-    expect(await screen.findByText('85.5%')).toBeInTheDocument();
-    expect(screen.getByText('10')).toBeInTheDocument(); // total techniques
+    // SecurityScore displays score in multiple places (stat card + main section)
+    const scores = await screen.findAllByText('85.5');
+    expect(scores.length).toBe(2); // stat card + main SecurityScore
+    expect(screen.getByText('10')).toBeInTheDocument(); // total techniques in breakdown
   });
 
   it('renders recent activity with executions', async () => {
@@ -124,6 +146,7 @@ describe('Dashboard', () => {
       }
       return Promise.resolve({ data: [] }) as never;
     });
+    vi.mocked(techniqueApi.getCoverage).mockResolvedValue({ data: {} } as never);
 
     renderWithClient(<Dashboard />);
 
@@ -135,6 +158,7 @@ describe('Dashboard', () => {
 
   it('renders chart section', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+    vi.mocked(techniqueApi.getCoverage).mockResolvedValue({ data: {} } as never);
 
     renderWithClient(<Dashboard />);
 
@@ -145,13 +169,18 @@ describe('Dashboard', () => {
 
   it('handles empty state gracefully', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+    vi.mocked(techniqueApi.getCoverage).mockResolvedValue({ data: {} } as never);
 
     renderWithClient(<Dashboard />);
 
-    // Default values when no data
-    expect(await screen.findByText('0%')).toBeInTheDocument();
+    // SecurityScore shows 0.0 in multiple places (stat card + main section)
+    const zeroScores = await screen.findAllByText('0.0');
+    expect(zeroScores.length).toBe(2);
+    // Check for zeros in stat cards
     const zeros = screen.getAllByText('0');
     expect(zeros.length).toBeGreaterThan(0);
+    // Check for "No recent executions" message
+    expect(screen.getByText('No recent executions')).toBeInTheDocument();
   });
 
   it('renders up to 5 recent executions', async () => {
@@ -169,6 +198,7 @@ describe('Dashboard', () => {
       }
       return Promise.resolve({ data: [] }) as never;
     });
+    vi.mocked(techniqueApi.getCoverage).mockResolvedValue({ data: {} } as never);
 
     renderWithClient(<Dashboard />);
 
@@ -176,5 +206,30 @@ describe('Dashboard', () => {
     expect(await screen.findByText('Scenario 1')).toBeInTheDocument();
     expect(screen.getByText('Scenario 5')).toBeInTheDocument();
     expect(screen.queryByText('Scenario 6')).not.toBeInTheDocument();
+  });
+
+  it('renders MITRE Coverage section', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+    vi.mocked(techniqueApi.getCoverage).mockResolvedValue({ data: {} } as never);
+
+    renderWithClient(<Dashboard />);
+
+    expect(screen.getByText('MITRE Coverage')).toBeInTheDocument();
+  });
+
+  it('displays coverage data when available', async () => {
+    const mockCoverage = {
+      discovery: 9,
+      execution: 3,
+    };
+    vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+    vi.mocked(techniqueApi.getCoverage).mockResolvedValue({ data: mockCoverage } as never);
+
+    renderWithClient(<Dashboard />);
+
+    // Total techniques should be 12
+    expect(await screen.findByText('12')).toBeInTheDocument();
+    expect(screen.getByText('discovery')).toBeInTheDocument();
+    expect(screen.getByText('execution')).toBeInTheDocument();
   });
 });

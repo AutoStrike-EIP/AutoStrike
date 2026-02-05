@@ -16,6 +16,32 @@ import { EmptyState } from '../components/EmptyState';
 import { RunExecutionModal } from '../components/RunExecutionModal';
 import toast from 'react-hot-toast';
 
+interface ImportResult {
+  imported: number;
+  failed: number;
+  errors?: string[];
+}
+
+function ImportResultIcon({ importResult }: { readonly importResult: ImportResult }) {
+  if (importResult.failed === 0) {
+    return <CheckCircleIcon className="h-8 w-8 text-green-500" />;
+  }
+  if (importResult.imported === 0) {
+    return <ExclamationTriangleIcon className="h-8 w-8 text-red-500" />;
+  }
+  return <ExclamationTriangleIcon className="h-8 w-8 text-yellow-500" />;
+}
+
+function ImportResultTitle({ importResult }: { readonly importResult: ImportResult }) {
+  if (importResult.failed === 0) {
+    return <>Import Successful</>;
+  }
+  if (importResult.imported === 0) {
+    return <>Import Failed</>;
+  }
+  return <>Partial Import</>;
+}
+
 /**
  * Scenarios page component.
  * Displays a grid of attack scenarios with their phases and configuration.
@@ -110,7 +136,7 @@ export default function Scenarios() {
       a.download = `autostrike-scenarios-${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       URL.revokeObjectURL(url);
       toast.success('Scenarios exported successfully');
     } catch {
@@ -123,37 +149,33 @@ export default function Scenarios() {
     setShowImportModal(true);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        const data = JSON.parse(content);
+    try {
+      const content = await file.text();
+      const data = JSON.parse(content);
 
-        // Handle both export format and direct array format
-        const scenarios = data.scenarios || data;
-        if (!Array.isArray(scenarios)) {
-          toast.error('Invalid format: expected scenarios array');
-          return;
-        }
-
-        importMutation.mutate({
-          version: data.version || '1.0',
-          scenarios: scenarios.map((s: { name: string; description?: string; phases: unknown[]; tags?: string[] }) => ({
-            name: s.name,
-            description: s.description,
-            phases: s.phases as ScenarioPhase[],
-            tags: s.tags,
-          })),
-        });
-      } catch {
-        toast.error('Failed to parse JSON file');
+      // Handle both export format and direct array format
+      const scenarios = data.scenarios || data;
+      if (!Array.isArray(scenarios)) {
+        toast.error('Invalid format: expected scenarios array');
+        return;
       }
-    };
-    reader.readAsText(file);
+
+      importMutation.mutate({
+        version: data.version || '1.0',
+        scenarios: scenarios.map((s: { name: string; description?: string; phases: unknown[]; tags?: string[] }) => ({
+          name: s.name,
+          description: s.description,
+          phases: s.phases as ScenarioPhase[],
+          tags: s.tags,
+        })),
+      });
+    } catch {
+      toast.error('Failed to parse JSON file');
+    }
 
     // Reset file input
     if (fileInputRef.current) {
@@ -286,8 +308,9 @@ export default function Scenarios() {
                   <p className="text-sm text-gray-600">
                     Upload a JSON file containing scenarios to import. The file should be in AutoStrike export format.
                   </p>
-                  <div
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-primary-500 transition-colors"
+                  <button
+                    type="button"
+                    className="w-full border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-primary-500 transition-colors bg-transparent"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <ArrowUpTrayIcon className="h-10 w-10 mx-auto text-gray-400 mb-3" />
@@ -297,7 +320,7 @@ export default function Scenarios() {
                     <p className="text-xs text-gray-400 mt-1">
                       or drag and drop
                     </p>
-                  </div>
+                  </button>
                   {importMutation.isPending && (
                     <div className="flex items-center justify-center gap-2 text-gray-600">
                       <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
@@ -312,20 +335,10 @@ export default function Scenarios() {
                 <div className="space-y-4">
                   {/* Import Results */}
                   <div className="flex items-center gap-3">
-                    {importResult.failed === 0 ? (
-                      <CheckCircleIcon className="h-8 w-8 text-green-500" />
-                    ) : importResult.imported === 0 ? (
-                      <ExclamationTriangleIcon className="h-8 w-8 text-red-500" />
-                    ) : (
-                      <ExclamationTriangleIcon className="h-8 w-8 text-yellow-500" />
-                    )}
+                    <ImportResultIcon importResult={importResult} />
                     <div>
                       <p className="font-medium">
-                        {importResult.failed === 0
-                          ? 'Import Successful'
-                          : importResult.imported === 0
-                            ? 'Import Failed'
-                            : 'Partial Import'}
+                        <ImportResultTitle importResult={importResult} />
                       </p>
                       <p className="text-sm text-gray-600">
                         {importResult.imported} imported, {importResult.failed} failed
@@ -338,7 +351,7 @@ export default function Scenarios() {
                       <p className="text-sm font-medium text-red-700 mb-2">Errors:</p>
                       <ul className="text-xs text-red-600 space-y-1">
                         {importResult.errors.map((error, idx) => (
-                          <li key={idx}>{error}</li>
+                          <li key={`error-${idx}-${error.slice(0, 20)}`}>{error}</li>
                         ))}
                       </ul>
                     </div>

@@ -135,6 +135,26 @@ func (s *NotificationService) MarkAllAsRead(ctx context.Context, userID string) 
 	return s.notificationRepo.MarkAllAsRead(ctx, userID)
 }
 
+// sendEmailAsync sends email asynchronously with semaphore control
+func (s *NotificationService) sendEmailAsync(to string, notificationType entity.NotificationType, data map[string]any) {
+	go func() {
+		s.emailSemaphore <- struct{}{}
+		defer func() { <-s.emailSemaphore }()
+		if err := s.sendEmail(to, notificationType, data); err != nil {
+			s.logger.Error("Failed to send email",
+				zap.String("to", to),
+				zap.String("type", string(notificationType)),
+				zap.Error(err),
+			)
+		}
+	}()
+}
+
+// shouldSendEmail checks if email should be sent for a setting
+func shouldSendEmail(setting *entity.NotificationSettings) bool {
+	return setting.Channel == entity.ChannelEmail && setting.EmailAddress != ""
+}
+
 // NotifyExecutionStarted sends notifications for execution start
 func (s *NotificationService) NotifyExecutionStarted(ctx context.Context, execution *entity.Execution, scenarioName string) error {
 	settings, err := s.notificationRepo.FindAllEnabledSettings(ctx)
@@ -169,30 +189,16 @@ func (s *NotificationService) NotifyExecutionStarted(ctx context.Context, execut
 			continue // Don't fail on individual notification errors
 		}
 
-		if setting.Channel == entity.ChannelEmail && setting.EmailAddress != "" {
-			go func(to string) {
-				s.emailSemaphore <- struct{}{} // Acquire semaphore
-				defer func() { <-s.emailSemaphore }() // Release semaphore
-				if err := s.sendEmail(to, entity.NotificationExecutionStarted, data); err != nil {
-					s.logger.Error("Failed to send execution started email",
-						zap.String("to", to),
-						zap.Error(err),
-					)
-				}
-			}(setting.EmailAddress)
+		if shouldSendEmail(setting) {
+			s.sendEmailAsync(setting.EmailAddress, entity.NotificationExecutionStarted, data)
 		}
 	}
 
 	return nil
 }
 
-// NotifyExecutionCompleted sends notifications for execution completion
-func (s *NotificationService) NotifyExecutionCompleted(ctx context.Context, execution *entity.Execution, scenarioName string) error {
-	settings, err := s.notificationRepo.FindAllEnabledSettings(ctx)
-	if err != nil {
-		return err
-	}
-
+// buildExecutionCompletedData builds notification data from execution
+func buildExecutionCompletedData(execution *entity.Execution, scenarioName, dashboardURL string) (map[string]any, float64) {
 	score := 0.0
 	blocked, detected, successful, total := 0, 0, 0, 0
 	if execution.Score != nil {
@@ -211,8 +217,50 @@ func (s *NotificationService) NotifyExecutionCompleted(ctx context.Context, exec
 		"Detected":     detected,
 		"Successful":   successful,
 		"Total":        total,
-		"DashboardURL": s.dashboardURL,
+		"DashboardURL": dashboardURL,
 	}
+	return data, score
+}
+
+// processScoreAlert handles score alert notification if threshold exceeded
+func (s *NotificationService) processScoreAlert(ctx context.Context, setting *entity.NotificationSettings, data map[string]any, score float64) {
+	if !setting.NotifyOnScoreAlert || score >= setting.ScoreAlertThreshold {
+		return
+	}
+
+	alertData := make(map[string]any)
+	for k, v := range data {
+		alertData[k] = v
+	}
+	alertData["Threshold"] = fmt.Sprintf("%.1f", setting.ScoreAlertThreshold)
+
+	alertNotification := &entity.Notification{
+		ID:        uuid.New().String(),
+		UserID:    setting.UserID,
+		Type:      entity.NotificationScoreAlert,
+		Title:     fmt.Sprintf("Low Score Alert: %.1f%%", score),
+		Message:   fmt.Sprintf("Security score %.1f%% is below threshold %.1f%%", score, setting.ScoreAlertThreshold),
+		Data:      alertData,
+		CreatedAt: time.Now(),
+	}
+
+	if err := s.notificationRepo.CreateNotification(ctx, alertNotification); err != nil {
+		return
+	}
+
+	if shouldSendEmail(setting) {
+		s.sendEmailAsync(setting.EmailAddress, entity.NotificationScoreAlert, alertData)
+	}
+}
+
+// NotifyExecutionCompleted sends notifications for execution completion
+func (s *NotificationService) NotifyExecutionCompleted(ctx context.Context, execution *entity.Execution, scenarioName string) error {
+	settings, err := s.notificationRepo.FindAllEnabledSettings(ctx)
+	if err != nil {
+		return err
+	}
+
+	data, score := buildExecutionCompletedData(execution, scenarioName, s.dashboardURL)
 
 	for _, setting := range settings {
 		if !setting.NotifyOnComplete {
@@ -233,52 +281,11 @@ func (s *NotificationService) NotifyExecutionCompleted(ctx context.Context, exec
 			continue
 		}
 
-		if setting.Channel == entity.ChannelEmail && setting.EmailAddress != "" {
-			go func(to string) {
-				s.emailSemaphore <- struct{}{} // Acquire semaphore
-				defer func() { <-s.emailSemaphore }() // Release semaphore
-				if err := s.sendEmail(to, entity.NotificationExecutionCompleted, data); err != nil {
-					s.logger.Error("Failed to send execution completed email",
-						zap.String("to", to),
-						zap.Error(err),
-					)
-				}
-			}(setting.EmailAddress)
+		if shouldSendEmail(setting) {
+			s.sendEmailAsync(setting.EmailAddress, entity.NotificationExecutionCompleted, data)
 		}
 
-		// Check for score alert
-		if setting.NotifyOnScoreAlert && score < setting.ScoreAlertThreshold {
-			alertData := make(map[string]any)
-			for k, v := range data {
-				alertData[k] = v
-			}
-			alertData["Threshold"] = fmt.Sprintf("%.1f", setting.ScoreAlertThreshold)
-
-			alertNotification := &entity.Notification{
-				ID:        uuid.New().String(),
-				UserID:    setting.UserID,
-				Type:      entity.NotificationScoreAlert,
-				Title:     fmt.Sprintf("Low Score Alert: %.1f%%", score),
-				Message:   fmt.Sprintf("Security score %.1f%% is below threshold %.1f%%", score, setting.ScoreAlertThreshold),
-				Data:      alertData,
-				CreatedAt: time.Now(),
-			}
-
-			if err := s.notificationRepo.CreateNotification(ctx, alertNotification); err == nil {
-				if setting.Channel == entity.ChannelEmail && setting.EmailAddress != "" {
-					go func(to string, alertDataCopy map[string]any) {
-						s.emailSemaphore <- struct{}{} // Acquire semaphore
-						defer func() { <-s.emailSemaphore }() // Release semaphore
-						if err := s.sendEmail(to, entity.NotificationScoreAlert, alertDataCopy); err != nil {
-							s.logger.Error("Failed to send score alert email",
-								zap.String("to", to),
-								zap.Error(err),
-							)
-						}
-					}(setting.EmailAddress, alertData)
-				}
-			}
-		}
+		s.processScoreAlert(ctx, setting, data, score)
 	}
 
 	return nil
@@ -317,17 +324,8 @@ func (s *NotificationService) NotifyExecutionFailed(ctx context.Context, executi
 			continue
 		}
 
-		if setting.Channel == entity.ChannelEmail && setting.EmailAddress != "" {
-			go func(to string) {
-				s.emailSemaphore <- struct{}{} // Acquire semaphore
-				defer func() { <-s.emailSemaphore }() // Release semaphore
-				if err := s.sendEmail(to, entity.NotificationExecutionFailed, data); err != nil {
-					s.logger.Error("Failed to send execution failed email",
-						zap.String("to", to),
-						zap.Error(err),
-					)
-				}
-			}(setting.EmailAddress)
+		if shouldSendEmail(setting) {
+			s.sendEmailAsync(setting.EmailAddress, entity.NotificationExecutionFailed, data)
 		}
 	}
 
@@ -368,21 +366,87 @@ func (s *NotificationService) NotifyAgentOffline(ctx context.Context, agent *ent
 			continue
 		}
 
-		if setting.Channel == entity.ChannelEmail && setting.EmailAddress != "" {
-			go func(to string) {
-				s.emailSemaphore <- struct{}{} // Acquire semaphore
-				defer func() { <-s.emailSemaphore }() // Release semaphore
-				if err := s.sendEmail(to, entity.NotificationAgentOffline, data); err != nil {
-					s.logger.Error("Failed to send agent offline email",
-						zap.String("to", to),
-						zap.Error(err),
-					)
-				}
-			}(setting.EmailAddress)
+		if shouldSendEmail(setting) {
+			s.sendEmailAsync(setting.EmailAddress, entity.NotificationAgentOffline, data)
 		}
 	}
 
 	return nil
+}
+
+// renderEmailTemplate renders a template with data
+func renderEmailTemplate(tmplStr string, data map[string]any) (string, error) {
+	tmpl, err := template.New("email").Parse(tmplStr)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// buildEmailMessage constructs the email message
+func buildEmailMessage(from, to, subject, body string) string {
+	msg := strings.Builder{}
+	msg.WriteString(fmt.Sprintf("From: %s\r\n", from))
+	msg.WriteString(fmt.Sprintf("To: %s\r\n", to))
+	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
+	msg.WriteString("MIME-Version: 1.0\r\n")
+	msg.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
+	msg.WriteString("\r\n")
+	msg.WriteString(body)
+	return msg.String()
+}
+
+// sendEmailTLS sends email over TLS connection
+func (s *NotificationService) sendEmailTLS(addr, to string, auth smtp.Auth, msg string) error {
+	tlsConfig := &tls.Config{
+		ServerName: s.smtpConfig.Host,
+	}
+
+	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect to SMTP server: %w", err)
+	}
+	defer conn.Close()
+
+	client, err := smtp.NewClient(conn, s.smtpConfig.Host)
+	if err != nil {
+		return fmt.Errorf("failed to create SMTP client: %w", err)
+	}
+	defer client.Close()
+
+	if auth != nil {
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("SMTP auth failed: %w", err)
+		}
+	}
+
+	if err := client.Mail(s.smtpConfig.From); err != nil {
+		return fmt.Errorf("SMTP MAIL command failed: %w", err)
+	}
+
+	if err := client.Rcpt(to); err != nil {
+		return fmt.Errorf("SMTP RCPT command failed: %w", err)
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("SMTP DATA command failed: %w", err)
+	}
+
+	if _, err := w.Write([]byte(msg)); err != nil {
+		return fmt.Errorf("failed to write email body: %w", err)
+	}
+
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("failed to close email writer: %w", err)
+	}
+
+	return client.Quit()
 }
 
 // sendEmail sends an email using the configured SMTP server
@@ -396,39 +460,17 @@ func (s *NotificationService) sendEmail(to string, notificationType entity.Notif
 		return fmt.Errorf("template not found for notification type: %s", notificationType)
 	}
 
-	// Parse and execute subject template
-	subjectTmpl, err := template.New("subject").Parse(tmpl.Subject)
+	subject, err := renderEmailTemplate(tmpl.Subject, data)
 	if err != nil {
-		return fmt.Errorf("failed to parse subject template: %w", err)
+		return fmt.Errorf("failed to render subject: %w", err)
 	}
 
-	var subjectBuf bytes.Buffer
-	if err := subjectTmpl.Execute(&subjectBuf, data); err != nil {
-		return fmt.Errorf("failed to execute subject template: %w", err)
-	}
-
-	// Parse and execute body template
-	bodyTmpl, err := template.New("body").Parse(tmpl.Body)
+	body, err := renderEmailTemplate(tmpl.Body, data)
 	if err != nil {
-		return fmt.Errorf("failed to parse body template: %w", err)
+		return fmt.Errorf("failed to render body: %w", err)
 	}
 
-	var bodyBuf bytes.Buffer
-	if err := bodyTmpl.Execute(&bodyBuf, data); err != nil {
-		return fmt.Errorf("failed to execute body template: %w", err)
-	}
-
-	// Build email message
-	msg := strings.Builder{}
-	msg.WriteString(fmt.Sprintf("From: %s\r\n", s.smtpConfig.From))
-	msg.WriteString(fmt.Sprintf("To: %s\r\n", to))
-	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", subjectBuf.String()))
-	msg.WriteString("MIME-Version: 1.0\r\n")
-	msg.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
-	msg.WriteString("\r\n")
-	msg.WriteString(bodyBuf.String())
-
-	// Connect to SMTP server
+	msg := buildEmailMessage(s.smtpConfig.From, to, subject, body)
 	addr := fmt.Sprintf("%s:%d", s.smtpConfig.Host, s.smtpConfig.Port)
 
 	var auth smtp.Auth
@@ -437,55 +479,10 @@ func (s *NotificationService) sendEmail(to string, notificationType entity.Notif
 	}
 
 	if s.smtpConfig.UseTLS {
-		// TLS connection
-		tlsConfig := &tls.Config{
-			ServerName: s.smtpConfig.Host,
-		}
-
-		conn, err := tls.Dial("tcp", addr, tlsConfig)
-		if err != nil {
-			return fmt.Errorf("failed to connect to SMTP server: %w", err)
-		}
-		defer conn.Close()
-
-		client, err := smtp.NewClient(conn, s.smtpConfig.Host)
-		if err != nil {
-			return fmt.Errorf("failed to create SMTP client: %w", err)
-		}
-		defer client.Close()
-
-		if auth != nil {
-			if err := client.Auth(auth); err != nil {
-				return fmt.Errorf("SMTP auth failed: %w", err)
-			}
-		}
-
-		if err := client.Mail(s.smtpConfig.From); err != nil {
-			return fmt.Errorf("SMTP MAIL command failed: %w", err)
-		}
-
-		if err := client.Rcpt(to); err != nil {
-			return fmt.Errorf("SMTP RCPT command failed: %w", err)
-		}
-
-		w, err := client.Data()
-		if err != nil {
-			return fmt.Errorf("SMTP DATA command failed: %w", err)
-		}
-
-		if _, err := w.Write([]byte(msg.String())); err != nil {
-			return fmt.Errorf("failed to write email body: %w", err)
-		}
-
-		if err := w.Close(); err != nil {
-			return fmt.Errorf("failed to close email writer: %w", err)
-		}
-
-		return client.Quit()
+		return s.sendEmailTLS(addr, to, auth, msg)
 	}
 
-	// Non-TLS connection
-	return smtp.SendMail(addr, auth, s.smtpConfig.From, []string{to}, []byte(msg.String()))
+	return smtp.SendMail(addr, auth, s.smtpConfig.From, []string{to}, []byte(msg))
 }
 
 // TestSMTPConnection tests the SMTP connection

@@ -192,6 +192,44 @@ type UpdateUserRequest struct {
 	Role     string `json:"role" binding:"omitempty"`
 }
 
+// handleUpdateError handles common update errors and returns true if error was handled
+func handleUpdateError(c *gin.Context, err error) bool {
+	switch {
+	case errors.Is(err, application.ErrUserNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
+	case errors.Is(err, application.ErrUserAlreadyExists):
+		c.JSON(http.StatusConflict, gin.H{"error": "username or email already exists"})
+	case errors.Is(err, application.ErrInvalidRole):
+		c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidRole})
+	default:
+		return false
+	}
+	return true
+}
+
+// mergeUserFields merges request fields with current user values
+func mergeUserFields(req *UpdateUserRequest, currentUser *entity.User) (string, string, entity.UserRole, bool) {
+	username := currentUser.Username
+	if req.Username != "" {
+		username = req.Username
+	}
+
+	email := currentUser.Email
+	if req.Email != "" {
+		email = req.Email
+	}
+
+	role := currentUser.Role
+	if req.Role != "" {
+		if !entity.IsValidRole(req.Role) {
+			return "", "", "", false
+		}
+		role = entity.UserRole(req.Role)
+	}
+
+	return username, email, role, true
+}
+
 // UpdateUser updates a user's details
 func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	if !h.isAdmin(c) {
@@ -211,55 +249,28 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// Get current user to fill in missing fields
 	currentUser, err := h.authService.GetUser(c.Request.Context(), id)
 	if err != nil {
-		if errors.Is(err, application.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
-			return
+		if !handleUpdateError(c, err) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get user"})
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get user"})
 		return
 	}
 
-	// Use existing values if not provided
-	username := currentUser.Username
-	if req.Username != "" {
-		username = req.Username
-	}
-
-	email := currentUser.Email
-	if req.Email != "" {
-		email = req.Email
-	}
-
-	role := currentUser.Role
-	if req.Role != "" {
-		if !entity.IsValidRole(req.Role) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":       errInvalidRole,
-				"valid_roles": entity.ValidRoles(),
-			})
-			return
-		}
-		role = entity.UserRole(req.Role)
+	username, email, role, valid := mergeUserFields(&req, currentUser)
+	if !valid {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":       errInvalidRole,
+			"valid_roles": entity.ValidRoles(),
+		})
+		return
 	}
 
 	user, err := h.authService.UpdateUser(c.Request.Context(), id, username, email, role)
 	if err != nil {
-		if errors.Is(err, application.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
-			return
+		if !handleUpdateError(c, err) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update user"})
 		}
-		if errors.Is(err, application.ErrUserAlreadyExists) {
-			c.JSON(http.StatusConflict, gin.H{"error": "username or email already exists"})
-			return
-		}
-		if errors.Is(err, application.ErrInvalidRole) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidRole})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update user"})
 		return
 	}
 

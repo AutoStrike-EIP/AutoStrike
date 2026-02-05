@@ -178,6 +178,107 @@ func (s *AnalyticsService) CompareScores(ctx context.Context, periodDays int) (*
 	return comparison, nil
 }
 
+// scoreTracker tracks min/max scores during iteration
+type scoreTracker struct {
+	maxScore float64
+	minScore float64
+	firstSet bool
+}
+
+// updateMinMax updates the tracker with a new score
+func (st *scoreTracker) updateMinMax(score float64) {
+	if st.firstSet {
+		st.maxScore = score
+		st.minScore = score
+		st.firstSet = false
+		return
+	}
+	if score > st.maxScore {
+		st.maxScore = score
+	}
+	if score < st.minScore {
+		st.minScore = score
+	}
+}
+
+// processDayExecutions processes executions for a single day and returns data point
+func processDayExecutions(dayExecs []*entity.Execution, dateKey string, tracker *scoreTracker) (TrendDataPoint, float64) {
+	point := TrendDataPoint{
+		Date:           dateKey,
+		ExecutionCount: len(dayExecs),
+	}
+
+	if len(dayExecs) == 0 {
+		return point, 0
+	}
+
+	var dayTotal float64
+	for _, exec := range dayExecs {
+		if exec.Score == nil {
+			continue
+		}
+		dayTotal += exec.Score.Overall
+		point.Blocked += exec.Score.Blocked
+		point.Detected += exec.Score.Detected
+		point.Successful += exec.Score.Successful
+		tracker.updateMinMax(exec.Score.Overall)
+	}
+	point.AverageScore = dayTotal / float64(len(dayExecs))
+	return point, point.AverageScore
+}
+
+// calculateTrendSummary computes the summary from collected scores
+func calculateTrendSummary(allScores []float64, totalExecutions int, tracker *scoreTracker) TrendSummary {
+	summary := TrendSummary{
+		TotalExecutions: totalExecutions,
+		MaxScore:        tracker.maxScore,
+		MinScore:        tracker.minScore,
+	}
+
+	if len(allScores) == 0 {
+		return summary
+	}
+
+	var totalScore float64
+	for _, score := range allScores {
+		totalScore += score
+	}
+
+	summary.AverageScore = totalScore / float64(len(allScores))
+	summary.StartScore = allScores[0]
+	summary.EndScore = allScores[len(allScores)-1]
+
+	if summary.StartScore > 0 {
+		summary.PercentageChange = ((summary.EndScore - summary.StartScore) / summary.StartScore) * 100
+	}
+
+	summary.OverallTrend = determineTrend(summary.PercentageChange)
+	return summary
+}
+
+// determineTrend returns trend label based on percentage change
+func determineTrend(percentageChange float64) string {
+	if percentageChange > 5 {
+		return "improving"
+	}
+	if percentageChange < -5 {
+		return "declining"
+	}
+	return "stable"
+}
+
+// periodLabel returns the label for a given number of days
+func periodLabel(days int) string {
+	switch days {
+	case 30:
+		return "30d"
+	case 90:
+		return "90d"
+	default:
+		return "7d"
+	}
+}
+
 // GetScoreTrend gets score trend over time
 func (s *AnalyticsService) GetScoreTrend(ctx context.Context, days int) (*ScoreTrend, error) {
 	now := time.Now()
@@ -198,90 +299,84 @@ func (s *AnalyticsService) GetScoreTrend(ctx context.Context, days int) (*ScoreT
 	// Generate data points for each day
 	dataPoints := make([]TrendDataPoint, 0)
 	var allScores []float64
-	var maxScore, minScore float64
-	firstSet := true
+	tracker := &scoreTracker{firstSet: true}
 
 	for d := start; !d.After(now); d = d.AddDate(0, 0, 1) {
 		dateKey := d.Format("2006-01-02")
-		dayExecs := dateGroups[dateKey]
-
-		point := TrendDataPoint{
-			Date:           dateKey,
-			ExecutionCount: len(dayExecs),
-		}
-
-		if len(dayExecs) > 0 {
-			var dayTotal float64
-			for _, exec := range dayExecs {
-				if exec.Score != nil {
-					dayTotal += exec.Score.Overall
-					point.Blocked += exec.Score.Blocked
-					point.Detected += exec.Score.Detected
-					point.Successful += exec.Score.Successful
-
-					if firstSet {
-						maxScore = exec.Score.Overall
-						minScore = exec.Score.Overall
-						firstSet = false
-					} else {
-						if exec.Score.Overall > maxScore {
-							maxScore = exec.Score.Overall
-						}
-						if exec.Score.Overall < minScore {
-							minScore = exec.Score.Overall
-						}
-					}
-				}
-			}
-			point.AverageScore = dayTotal / float64(len(dayExecs))
-			allScores = append(allScores, point.AverageScore)
-		}
-
+		point, avgScore := processDayExecutions(dateGroups[dateKey], dateKey, tracker)
 		dataPoints = append(dataPoints, point)
-	}
-
-	// Calculate summary
-	var totalScore float64
-	for _, score := range allScores {
-		totalScore += score
-	}
-
-	summary := TrendSummary{
-		TotalExecutions: len(executions),
-		MaxScore:        maxScore,
-		MinScore:        minScore,
-	}
-
-	if len(allScores) > 0 {
-		summary.AverageScore = totalScore / float64(len(allScores))
-		summary.StartScore = allScores[0]
-		summary.EndScore = allScores[len(allScores)-1]
-
-		if summary.StartScore > 0 {
-			summary.PercentageChange = ((summary.EndScore - summary.StartScore) / summary.StartScore) * 100
+		if point.ExecutionCount > 0 {
+			allScores = append(allScores, avgScore)
 		}
-
-		if summary.PercentageChange > 5 {
-			summary.OverallTrend = "improving"
-		} else if summary.PercentageChange < -5 {
-			summary.OverallTrend = "declining"
-		} else {
-			summary.OverallTrend = "stable"
-		}
-	}
-
-	periodLabel := "7d"
-	if days == 30 {
-		periodLabel = "30d"
-	} else if days == 90 {
-		periodLabel = "90d"
 	}
 
 	return &ScoreTrend{
-		Period:     periodLabel,
+		Period:     periodLabel(days),
 		DataPoints: dataPoints,
-		Summary:    summary,
+		Summary:    calculateTrendSummary(allScores, len(executions), tracker),
 	}, nil
+}
+
+// executionSummaryBuilder builds execution summary incrementally
+type executionSummaryBuilder struct {
+	summary        *ExecutionSummary
+	scenarioScores map[string][]float64
+	completedScores []float64
+	scoreTracker   *scoreTracker
+}
+
+// newExecutionSummaryBuilder creates a new builder
+func newExecutionSummaryBuilder(totalExecutions int) *executionSummaryBuilder {
+	return &executionSummaryBuilder{
+		summary: &ExecutionSummary{
+			TotalExecutions:    totalExecutions,
+			ScoresByScenario:   make(map[string]float64),
+			ExecutionsByStatus: make(map[string]int),
+		},
+		scenarioScores:  make(map[string][]float64),
+		completedScores: []float64{},
+		scoreTracker:    &scoreTracker{firstSet: true},
+	}
+}
+
+// processExecution processes a single execution
+func (b *executionSummaryBuilder) processExecution(exec *entity.Execution) {
+	b.summary.ExecutionsByStatus[string(exec.Status)]++
+
+	if exec.Status != entity.ExecutionCompleted || exec.Score == nil {
+		return
+	}
+
+	b.summary.CompletedExecutions++
+	score := exec.Score.Overall
+	b.completedScores = append(b.completedScores, score)
+	b.scenarioScores[exec.ScenarioID] = append(b.scenarioScores[exec.ScenarioID], score)
+	b.scoreTracker.updateMinMax(score)
+}
+
+// finalize calculates final averages and returns the summary
+func (b *executionSummaryBuilder) finalize() *ExecutionSummary {
+	b.summary.BestScore = b.scoreTracker.maxScore
+	b.summary.WorstScore = b.scoreTracker.minScore
+
+	if len(b.completedScores) > 0 {
+		b.summary.AverageScore = averageScore(b.completedScores)
+	}
+
+	for scenarioID, scores := range b.scenarioScores {
+		b.summary.ScoresByScenario[scenarioID] = averageScore(scores)
+	}
+
+	return b.summary
+}
+
+// averageScore calculates the average of a slice of scores
+func averageScore(scores []float64) float64 {
+	var total float64
+	for _, score := range scores {
+		total += score
+	}
+	return total / float64(len(scores))
 }
 
 // GetExecutionSummary provides overall execution analytics
@@ -294,56 +389,10 @@ func (s *AnalyticsService) GetExecutionSummary(ctx context.Context, days int) (*
 		return nil, err
 	}
 
-	summary := &ExecutionSummary{
-		TotalExecutions:    len(executions),
-		ScoresByScenario:   make(map[string]float64),
-		ExecutionsByStatus: make(map[string]int),
-	}
-
-	scenarioScores := make(map[string][]float64)
-	var completedScores []float64
-	firstCompleted := true
-
+	builder := newExecutionSummaryBuilder(len(executions))
 	for _, exec := range executions {
-		summary.ExecutionsByStatus[string(exec.Status)]++
-
-		if exec.Status == entity.ExecutionCompleted && exec.Score != nil {
-			summary.CompletedExecutions++
-			completedScores = append(completedScores, exec.Score.Overall)
-			scenarioScores[exec.ScenarioID] = append(scenarioScores[exec.ScenarioID], exec.Score.Overall)
-
-			if firstCompleted {
-				summary.BestScore = exec.Score.Overall
-				summary.WorstScore = exec.Score.Overall
-				firstCompleted = false
-			} else {
-				if exec.Score.Overall > summary.BestScore {
-					summary.BestScore = exec.Score.Overall
-				}
-				if exec.Score.Overall < summary.WorstScore {
-					summary.WorstScore = exec.Score.Overall
-				}
-			}
-		}
+		builder.processExecution(exec)
 	}
 
-	// Calculate averages
-	if len(completedScores) > 0 {
-		var total float64
-		for _, score := range completedScores {
-			total += score
-		}
-		summary.AverageScore = total / float64(len(completedScores))
-	}
-
-	// Calculate per-scenario averages
-	for scenarioID, scores := range scenarioScores {
-		var total float64
-		for _, score := range scores {
-			total += score
-		}
-		summary.ScoresByScenario[scenarioID] = total / float64(len(scores))
-	}
-
-	return summary, nil
+	return builder.finalize(), nil
 }

@@ -644,9 +644,9 @@ function Modal({
   children,
   onClose,
 }: {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
+  readonly title: string;
+  readonly children: React.ReactNode;
+  readonly onClose: () => void;
 }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -664,7 +664,7 @@ function Modal({
 }
 
 // Error Alert Component
-function ErrorAlert({ message }: { message: string }) {
+function ErrorAlert({ message }: { readonly message: string }) {
   return (
     <div className="bg-red-50 border border-red-200 rounded-md p-3">
       <div className="flex items-center gap-2">

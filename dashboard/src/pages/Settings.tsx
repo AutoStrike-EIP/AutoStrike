@@ -53,9 +53,9 @@ function Toggle({
   onChange,
   disabled = false,
 }: {
-  enabled: boolean;
-  onChange: () => void;
-  disabled?: boolean;
+  readonly enabled: boolean;
+  readonly onChange: () => void;
+  readonly disabled?: boolean;
 }) {
   return (
     <button

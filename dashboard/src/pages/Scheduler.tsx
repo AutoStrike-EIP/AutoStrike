@@ -26,6 +26,68 @@ import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import toast from 'react-hot-toast';
 
+function getRunStatusColor(status: string): string {
+  switch (status) {
+    case 'completed':
+      return 'bg-green-500';
+    case 'failed':
+      return 'bg-red-500';
+    default:
+      return 'bg-yellow-500';
+  }
+}
+
+function getSubmitButtonText(isPending: boolean, isEditMode: boolean): string {
+  if (isPending) {
+    return isEditMode ? 'Updating...' : 'Creating...';
+  }
+  return isEditMode ? 'Update Schedule' : 'Create Schedule';
+}
+
+interface ScheduleStatusButtonProps {
+  readonly status: string;
+  readonly scheduleId: string;
+  readonly onPause: (id: string) => void;
+  readonly onResume: (id: string) => void;
+  readonly isPauseDisabled: boolean;
+  readonly isResumeDisabled: boolean;
+}
+
+function ScheduleStatusButton({
+  status,
+  scheduleId,
+  onPause,
+  onResume,
+  isPauseDisabled,
+  isResumeDisabled,
+}: ScheduleStatusButtonProps) {
+  if (status === 'active') {
+    return (
+      <button
+        onClick={() => onPause(scheduleId)}
+        className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg"
+        title="Pause"
+        disabled={isPauseDisabled}
+      >
+        <PauseIcon className="h-5 w-5" />
+      </button>
+    );
+  }
+  if (status === 'paused') {
+    return (
+      <button
+        onClick={() => onResume(scheduleId)}
+        className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+        title="Resume"
+        disabled={isResumeDisabled}
+      >
+        <PlayIcon className="h-5 w-5" />
+      </button>
+    );
+  }
+  return null;
+}
+
 const frequencyLabels: Record<ScheduleFrequency, string> = {
   once: 'Once',
   hourly: 'Hourly',
@@ -203,25 +265,14 @@ export default function Scheduler() {
                 </div>
 
                 <div className="flex items-center gap-2 ml-4">
-                  {schedule.status === 'active' ? (
-                    <button
-                      onClick={() => pauseMutation.mutate(schedule.id)}
-                      className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg"
-                      title="Pause"
-                      disabled={pauseMutation.isPending}
-                    >
-                      <PauseIcon className="h-5 w-5" />
-                    </button>
-                  ) : schedule.status === 'paused' ? (
-                    <button
-                      onClick={() => resumeMutation.mutate(schedule.id)}
-                      className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
-                      title="Resume"
-                      disabled={resumeMutation.isPending}
-                    >
-                      <PlayIcon className="h-5 w-5" />
-                    </button>
-                  ) : null}
+                  <ScheduleStatusButton
+                    status={schedule.status}
+                    scheduleId={schedule.id}
+                    onPause={(id) => pauseMutation.mutate(id)}
+                    onResume={(id) => resumeMutation.mutate(id)}
+                    isPauseDisabled={pauseMutation.isPending}
+                    isResumeDisabled={resumeMutation.isPending}
+                  />
                   <button
                     onClick={() => runNowMutation.mutate(schedule.id)}
                     className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg"
@@ -322,7 +373,7 @@ export default function Scheduler() {
 }
 
 interface ScheduleRunsHistoryProps {
-  scheduleId: string;
+  readonly scheduleId: string;
 }
 
 function ScheduleRunsHistory({ scheduleId }: ScheduleRunsHistoryProps) {
@@ -358,13 +409,7 @@ function ScheduleRunsHistory({ scheduleId }: ScheduleRunsHistoryProps) {
           >
             <div className="flex items-center gap-3">
               <span
-                className={`w-2 h-2 rounded-full ${
-                  run.status === 'completed'
-                    ? 'bg-green-500'
-                    : run.status === 'failed'
-                      ? 'bg-red-500'
-                      : 'bg-yellow-500'
-                }`}
+                className={`w-2 h-2 rounded-full ${getRunStatusColor(run.status)}`}
               />
               <span>{formatDate(run.started_at)}</span>
               {run.error && (
@@ -387,11 +432,11 @@ function ScheduleRunsHistory({ scheduleId }: ScheduleRunsHistoryProps) {
 }
 
 interface ScheduleFormModalProps {
-  schedule?: Schedule;
-  scenarios: Scenario[];
-  onClose: () => void;
-  onUpdate?: (data: CreateScheduleRequest) => void;
-  isUpdating?: boolean;
+  readonly schedule?: Schedule;
+  readonly scenarios: Scenario[];
+  readonly onClose: () => void;
+  readonly onUpdate?: (data: CreateScheduleRequest) => void;
+  readonly isUpdating?: boolean;
 }
 
 function ScheduleFormModal({
@@ -597,13 +642,7 @@ function ScheduleFormModal({
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={isPending}>
-              {isPending
-                ? isEditMode
-                  ? 'Updating...'
-                  : 'Creating...'
-                : isEditMode
-                  ? 'Update Schedule'
-                  : 'Create Schedule'}
+              {getSubmitButtonText(isPending ?? false, isEditMode)}
             </button>
           </div>
         </form>

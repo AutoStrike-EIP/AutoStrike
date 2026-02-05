@@ -36,6 +36,12 @@ ChartJS.register(
   Filler
 );
 
+function formatScoreChange(change?: number): string {
+  if (!change) return '0';
+  const prefix = change > 0 ? '+' : '';
+  return `${prefix}${change.toFixed(1)}`;
+}
+
 /**
  * Analytics page component.
  * Displays security score trends, comparisons, and execution analytics.
@@ -226,8 +232,7 @@ export default function Analytics() {
             {comparison?.current.average_score.toFixed(1) || 0}%
           </p>
           <p className={`text-sm ${getTrendColor(comparison?.score_trend)}`}>
-            {comparison?.score_change ? (comparison.score_change > 0 ? '+' : '') : ''}
-            {comparison?.score_change?.toFixed(1) || 0}% vs previous period
+            {formatScoreChange(comparison?.score_change)}% vs previous period
           </p>
         </div>
 

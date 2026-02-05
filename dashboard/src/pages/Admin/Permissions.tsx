@@ -167,7 +167,7 @@ export default function Permissions() {
                 {getRoleDescription(role)}
               </p>
               <p className="text-xs text-gray-400 mt-2">
-                {permCount} permission{permCount !== 1 ? 's' : ''}
+                {permCount} permission{permCount === 1 ? '' : 's'}
               </p>
             </div>
           );

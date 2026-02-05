@@ -1,6 +1,10 @@
 package entity
 
-import "time"
+import (
+	"time"
+
+	"github.com/robfig/cron/v3"
+)
 
 // ScheduleStatus represents the status of a schedule
 type ScheduleStatus string
@@ -80,8 +84,17 @@ func (s *Schedule) CalculateNextRun(from time.Time) *time.Time {
 	case FrequencyMonthly:
 		next = from.AddDate(0, 1, 0)
 	case FrequencyCron:
-		// Cron parsing is handled separately
-		return nil
+		// Parse cron expression and calculate next run
+		if s.CronExpr == "" {
+			return nil
+		}
+		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		schedule, err := parser.Parse(s.CronExpr)
+		if err != nil {
+			return nil
+		}
+		next = schedule.Next(from)
+		return &next
 	default:
 		return nil
 	}
@@ -97,4 +110,14 @@ func (s *Schedule) IsReadyToRun(now time.Time) bool {
 		return false
 	}
 	return !now.Before(*s.NextRunAt)
+}
+
+// ValidateCronExpr validates a cron expression and returns an error if invalid
+func ValidateCronExpr(cronExpr string) error {
+	if cronExpr == "" {
+		return nil
+	}
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	_, err := parser.Parse(cronExpr)
+	return err
 }

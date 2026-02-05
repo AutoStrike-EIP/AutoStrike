@@ -284,4 +284,281 @@ describe('Notification Settings', () => {
       expect(screen.getByText('Receive notifications for execution events')).toBeInTheDocument();
     });
   });
+
+  it('shows notification channel options when enabled', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSettings).mockResolvedValue({
+      data: {
+        channel: 'email',
+        enabled: true,
+        email_address: 'test@example.com',
+        notify_on_start: false,
+        notify_on_complete: true,
+        notify_on_failure: true,
+        notify_on_score_alert: true,
+        score_alert_threshold: 70,
+        notify_on_agent_offline: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Notification Channel')).toBeInTheDocument();
+    });
+  });
+
+  it('shows email input when email channel selected', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSettings).mockResolvedValue({
+      data: {
+        channel: 'email',
+        enabled: true,
+        email_address: 'test@example.com',
+        notify_on_start: false,
+        notify_on_complete: true,
+        notify_on_failure: true,
+        notify_on_score_alert: true,
+        score_alert_threshold: 70,
+        notify_on_agent_offline: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Email Address')).toBeInTheDocument();
+    });
+  });
+
+  it('shows notification type toggles when enabled', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSettings).mockResolvedValue({
+      data: {
+        channel: 'email',
+        enabled: true,
+        email_address: 'test@example.com',
+        notify_on_start: false,
+        notify_on_complete: true,
+        notify_on_failure: true,
+        notify_on_score_alert: true,
+        score_alert_threshold: 70,
+        notify_on_agent_offline: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Notify me when:')).toBeInTheDocument();
+      expect(screen.getByText('Execution starts')).toBeInTheDocument();
+      expect(screen.getByText('Execution completes')).toBeInTheDocument();
+      expect(screen.getByText('Execution fails')).toBeInTheDocument();
+      expect(screen.getByText('Agent goes offline')).toBeInTheDocument();
+    });
+  });
+
+  it('shows save notification settings button when enabled', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSettings).mockResolvedValue({
+      data: {
+        channel: 'email',
+        enabled: true,
+        email_address: 'test@example.com',
+        notify_on_start: false,
+        notify_on_complete: true,
+        notify_on_failure: true,
+        notify_on_score_alert: true,
+        score_alert_threshold: 70,
+        notify_on_agent_offline: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Save Notification Settings')).toBeInTheDocument();
+    });
+  });
+
+  it('saves notification settings on button click', async () => {
+    const { notificationApi } = await import('../lib/api');
+    const toast = await import('react-hot-toast');
+    vi.mocked(notificationApi.getSettings).mockResolvedValue({
+      data: {
+        channel: 'email',
+        enabled: true,
+        email_address: 'test@example.com',
+        notify_on_start: false,
+        notify_on_complete: true,
+        notify_on_failure: true,
+        notify_on_score_alert: true,
+        score_alert_threshold: 70,
+        notify_on_agent_offline: true,
+      },
+    } as never);
+    vi.mocked(notificationApi.updateSettings).mockResolvedValue({ data: {} } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Save Notification Settings')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Save Notification Settings'));
+
+    await waitFor(() => {
+      expect(notificationApi.updateSettings).toHaveBeenCalled();
+      expect(toast.default.success).toHaveBeenCalledWith('Notification settings saved');
+    });
+  });
+
+  it('shows error toast when save fails', async () => {
+    const { notificationApi } = await import('../lib/api');
+    const toast = await import('react-hot-toast');
+    vi.mocked(notificationApi.getSettings).mockResolvedValue({
+      data: {
+        channel: 'email',
+        enabled: true,
+        email_address: '',
+        notify_on_start: false,
+        notify_on_complete: true,
+        notify_on_failure: true,
+        notify_on_score_alert: true,
+        score_alert_threshold: 70,
+        notify_on_agent_offline: true,
+      },
+    } as never);
+    vi.mocked(notificationApi.updateSettings).mockRejectedValue(new Error('Save failed'));
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Save Notification Settings')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Save Notification Settings'));
+
+    await waitFor(() => {
+      expect(toast.default.error).toHaveBeenCalledWith('Failed to save notification settings');
+    });
+  });
+});
+
+describe('SMTP Test', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+  });
+
+  it('shows SMTP test section when SMTP is configured', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSMTPConfig).mockResolvedValue({
+      data: {
+        host: 'smtp.example.com',
+        port: 587,
+        use_tls: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Email')).toBeInTheDocument();
+    });
+  });
+
+  it('sends test email on button click', async () => {
+    const { notificationApi } = await import('../lib/api');
+    const toast = await import('react-hot-toast');
+    vi.mocked(notificationApi.getSMTPConfig).mockResolvedValue({
+      data: {
+        host: 'smtp.example.com',
+        port: 587,
+        use_tls: true,
+      },
+    } as never);
+    vi.mocked(notificationApi.testSMTP).mockResolvedValue({ data: {} } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Email')).toBeInTheDocument();
+    });
+
+    const emailInput = screen.getByPlaceholderText('Enter email to send test');
+    fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
+
+    fireEvent.click(screen.getByText('Send Test'));
+
+    await waitFor(() => {
+      expect(notificationApi.testSMTP).toHaveBeenCalledWith('test@example.com');
+      expect(toast.default.success).toHaveBeenCalledWith('Test email sent successfully');
+    });
+  });
+
+  it('shows error when test email fails', async () => {
+    const { notificationApi } = await import('../lib/api');
+    const toast = await import('react-hot-toast');
+    vi.mocked(notificationApi.getSMTPConfig).mockResolvedValue({
+      data: {
+        host: 'smtp.example.com',
+        port: 587,
+        use_tls: true,
+      },
+    } as never);
+    vi.mocked(notificationApi.testSMTP).mockRejectedValue(new Error('SMTP error'));
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Email')).toBeInTheDocument();
+    });
+
+    const emailInput = screen.getByPlaceholderText('Enter email to send test');
+    fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
+
+    fireEvent.click(screen.getByText('Send Test'));
+
+    await waitFor(() => {
+      expect(toast.default.error).toHaveBeenCalledWith('Failed to send test email');
+    });
+  });
+
+  it('shows error when no email entered', async () => {
+    const { notificationApi } = await import('../lib/api');
+    const toast = await import('react-hot-toast');
+    vi.mocked(notificationApi.getSMTPConfig).mockResolvedValue({
+      data: {
+        host: 'smtp.example.com',
+        port: 587,
+        use_tls: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Email')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Send Test'));
+
+    await waitFor(() => {
+      expect(toast.default.error).toHaveBeenCalledWith('Please enter an email address');
+    });
+  });
+});
+
+describe('Safe Mode Toggle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+  });
+
+  it('renders safe mode toggle with description', () => {
+    renderSettings();
+    expect(screen.getByText('Safe Mode by Default')).toBeInTheDocument();
+    expect(screen.getByText("Only run safe techniques that don't modify the system")).toBeInTheDocument();
+  });
 });

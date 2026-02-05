@@ -217,17 +217,22 @@ func processDayExecutions(dayExecs []*entity.Execution, dateKey string, tracker 
 	}
 
 	var dayTotal float64
+	var scoredCount int
 	for _, exec := range dayExecs {
 		if exec.Score == nil {
 			continue
 		}
+		scoredCount++
 		dayTotal += exec.Score.Overall
 		point.Blocked += exec.Score.Blocked
 		point.Detected += exec.Score.Detected
 		point.Successful += exec.Score.Successful
 		tracker.updateMinMax(exec.Score.Overall)
 	}
-	point.AverageScore = dayTotal / float64(len(dayExecs))
+	// Calculate average only from executions that have scores
+	if scoredCount > 0 {
+		point.AverageScore = dayTotal / float64(scoredCount)
+	}
 	return point, point.AverageScore
 }
 

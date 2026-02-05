@@ -11,6 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const testUserID = "test-user"
+
 func TestNewPermissionHandler(t *testing.T) {
 	handler := NewPermissionHandler()
 	if handler == nil {
@@ -90,6 +92,7 @@ func TestPermissionHandler_GetMyPermissions_Success(t *testing.T) {
 
 	router := gin.New()
 	router.GET("/permissions/me", func(c *gin.Context) {
+		c.Set("user_id", testUserID)
 		c.Set("role", "admin")
 		handler.GetMyPermissions(c)
 	})
@@ -124,6 +127,7 @@ func TestPermissionHandler_GetMyPermissions_Viewer(t *testing.T) {
 
 	router := gin.New()
 	router.GET("/permissions/me", func(c *gin.Context) {
+		c.Set("user_id", testUserID)
 		c.Set("role", "viewer")
 		handler.GetMyPermissions(c)
 	})
@@ -174,6 +178,7 @@ func TestPermissionHandler_GetMyPermissions_InvalidRole(t *testing.T) {
 
 	router := gin.New()
 	router.GET("/permissions/me", func(c *gin.Context) {
+		c.Set("user_id", testUserID)
 		c.Set("role", 123) // Invalid type
 		handler.GetMyPermissions(c)
 	})

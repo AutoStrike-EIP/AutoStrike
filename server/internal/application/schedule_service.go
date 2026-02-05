@@ -54,8 +54,21 @@ type CreateScheduleRequest struct {
 	StartAt     *time.Time               `json:"start_at"`
 }
 
+// ErrInvalidCronExpr is returned when a cron expression is invalid
+var ErrInvalidCronExpr = errors.New("invalid cron expression")
+
 // Create creates a new schedule
 func (s *ScheduleService) Create(ctx context.Context, req *CreateScheduleRequest, userID string) (*entity.Schedule, error) {
+	// Validate cron expression if frequency is cron
+	if req.Frequency == entity.FrequencyCron {
+		if req.CronExpr == "" {
+			return nil, fmt.Errorf("cron expression required for cron frequency: %w", ErrInvalidCronExpr)
+		}
+		if err := entity.ValidateCronExpr(req.CronExpr); err != nil {
+			return nil, fmt.Errorf("invalid cron expression '%s': %w", req.CronExpr, ErrInvalidCronExpr)
+		}
+	}
+
 	now := time.Now()
 
 	schedule := &entity.Schedule{
@@ -96,6 +109,16 @@ func (s *ScheduleService) Create(ctx context.Context, req *CreateScheduleRequest
 
 // Update updates an existing schedule
 func (s *ScheduleService) Update(ctx context.Context, id string, req *CreateScheduleRequest) (*entity.Schedule, error) {
+	// Validate cron expression if frequency is cron
+	if req.Frequency == entity.FrequencyCron {
+		if req.CronExpr == "" {
+			return nil, fmt.Errorf("cron expression required for cron frequency: %w", ErrInvalidCronExpr)
+		}
+		if err := entity.ValidateCronExpr(req.CronExpr); err != nil {
+			return nil, fmt.Errorf("invalid cron expression '%s': %w", req.CronExpr, ErrInvalidCronExpr)
+		}
+	}
+
 	schedule, err := s.scheduleRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err

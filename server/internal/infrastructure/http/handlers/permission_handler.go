@@ -43,6 +43,13 @@ func (h *PermissionHandler) GetPermissionMatrix(c *gin.Context) {
 
 // GetMyPermissions returns the current user's permissions
 func (h *PermissionHandler) GetMyPermissions(c *gin.Context) {
+	// Require authentication - check both user_id and role
+	_, userExists := c.Get("user_id")
+	if !userExists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": errNotAuthenticated})
+		return
+	}
+
 	role, exists := c.Get("role")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": errNotAuthenticated})

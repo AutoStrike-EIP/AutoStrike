@@ -20,12 +20,12 @@ export function ThemeToggle({ variant = 'icon', className = '' }: ThemeTogglePro
     return (
       <button
         onClick={toggleTheme}
-        className={`p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${className}`}
+        className={`p-2 rounded-lg hover:bg-gray-800 transition-colors ${className}`}
         aria-label={`Switch to ${resolvedTheme === 'light' ? 'dark' : 'light'} mode`}
         title={`Switch to ${resolvedTheme === 'light' ? 'dark' : 'light'} mode`}
       >
         {resolvedTheme === 'light' ? (
-          <MoonIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+          <MoonIcon className="h-5 w-5 text-gray-300" />
         ) : (
           <SunIcon className="h-5 w-5 text-gray-300" />
         )}

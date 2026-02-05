@@ -635,3 +635,384 @@ func TestNotificationService_GetNotificationsByUserID_DefaultLimit(t *testing.T)
 		t.Fatalf("GetNotificationsByUserID failed: %v", err)
 	}
 }
+
+func TestNotificationService_MarkAsReadForUser_Success(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	service := NewNotificationService(repo, userRepo, nil, "https://localhost:8443", nil)
+
+	notification := &entity.Notification{
+		ID:     "notif-1",
+		UserID: "user-1",
+		Read:   false,
+	}
+	repo.notifications[notification.ID] = notification
+
+	err := service.MarkAsReadForUser(context.Background(), "notif-1", "user-1")
+	if err != nil {
+		t.Fatalf("MarkAsReadForUser failed: %v", err)
+	}
+
+	if !repo.notifications["notif-1"].Read {
+		t.Error("Notification should be marked as read")
+	}
+}
+
+func TestNotificationService_MarkAsReadForUser_NotOwned(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	service := NewNotificationService(repo, userRepo, nil, "https://localhost:8443", nil)
+
+	notification := &entity.Notification{
+		ID:     "notif-1",
+		UserID: "user-1",
+		Read:   false,
+	}
+	repo.notifications[notification.ID] = notification
+
+	// Try to mark as read with different user
+	err := service.MarkAsReadForUser(context.Background(), "notif-1", "user-2")
+	if err == nil {
+		t.Error("MarkAsReadForUser should fail when user doesn't own notification")
+	}
+}
+
+func TestNotificationService_MarkAsReadForUser_NotFound(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	service := NewNotificationService(repo, userRepo, nil, "https://localhost:8443", nil)
+
+	err := service.MarkAsReadForUser(context.Background(), "nonexistent", "user-1")
+	if err == nil {
+		t.Error("MarkAsReadForUser should fail when notification not found")
+	}
+}
+
+func TestNotificationService_NotifyExecutionCompleted_NilScore(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	service := NewNotificationService(repo, userRepo, nil, "https://localhost:8443", nil)
+
+	settings := &entity.NotificationSettings{
+		ID:               "settings-1",
+		UserID:           "user-1",
+		Channel:          entity.ChannelEmail,
+		Enabled:          true,
+		NotifyOnComplete: true,
+	}
+	repo.settings[settings.ID] = settings
+
+	execution := &entity.Execution{
+		ID:        "exec-1",
+		StartedAt: time.Now(),
+		Score:     nil, // nil score
+	}
+
+	err := service.NotifyExecutionCompleted(context.Background(), execution, "Test Scenario")
+	if err != nil {
+		t.Fatalf("NotifyExecutionCompleted failed: %v", err)
+	}
+
+	if len(repo.notifications) != 1 {
+		t.Errorf("len(notifications) = %d, want 1", len(repo.notifications))
+	}
+}
+
+func TestNotificationService_NotifyExecutionStarted_NotifyDisabled(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	service := NewNotificationService(repo, userRepo, nil, "https://localhost:8443", nil)
+
+	// Settings with NotifyOnStart = false
+	settings := &entity.NotificationSettings{
+		ID:            "settings-1",
+		UserID:        "user-1",
+		Channel:       entity.ChannelEmail,
+		Enabled:       true,
+		NotifyOnStart: false,
+	}
+	repo.settings[settings.ID] = settings
+
+	execution := &entity.Execution{
+		ID:        "exec-1",
+		StartedAt: time.Now(),
+	}
+
+	err := service.NotifyExecutionStarted(context.Background(), execution, "Test Scenario")
+	if err != nil {
+		t.Fatalf("NotifyExecutionStarted failed: %v", err)
+	}
+
+	// Should not create notification
+	if len(repo.notifications) != 0 {
+		t.Errorf("len(notifications) = %d, want 0", len(repo.notifications))
+	}
+}
+
+func TestNotificationService_NotifyExecutionCompleted_NotifyDisabled(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	service := NewNotificationService(repo, userRepo, nil, "https://localhost:8443", nil)
+
+	settings := &entity.NotificationSettings{
+		ID:               "settings-1",
+		UserID:           "user-1",
+		Channel:          entity.ChannelEmail,
+		Enabled:          true,
+		NotifyOnComplete: false,
+	}
+	repo.settings[settings.ID] = settings
+
+	execution := &entity.Execution{
+		ID:        "exec-1",
+		StartedAt: time.Now(),
+	}
+
+	err := service.NotifyExecutionCompleted(context.Background(), execution, "Test Scenario")
+	if err != nil {
+		t.Fatalf("NotifyExecutionCompleted failed: %v", err)
+	}
+
+	if len(repo.notifications) != 0 {
+		t.Errorf("len(notifications) = %d, want 0", len(repo.notifications))
+	}
+}
+
+func TestNotificationService_NotifyExecutionFailed_NotifyDisabled(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	service := NewNotificationService(repo, userRepo, nil, "https://localhost:8443", nil)
+
+	settings := &entity.NotificationSettings{
+		ID:              "settings-1",
+		UserID:          "user-1",
+		Channel:         entity.ChannelEmail,
+		Enabled:         true,
+		NotifyOnFailure: false,
+	}
+	repo.settings[settings.ID] = settings
+
+	execution := &entity.Execution{
+		ID:        "exec-1",
+		StartedAt: time.Now(),
+	}
+
+	err := service.NotifyExecutionFailed(context.Background(), execution, "Test Scenario", "Error")
+	if err != nil {
+		t.Fatalf("NotifyExecutionFailed failed: %v", err)
+	}
+
+	if len(repo.notifications) != 0 {
+		t.Errorf("len(notifications) = %d, want 0", len(repo.notifications))
+	}
+}
+
+func TestNotificationService_NotifyAgentOffline_NotifyDisabled(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	service := NewNotificationService(repo, userRepo, nil, "https://localhost:8443", nil)
+
+	settings := &entity.NotificationSettings{
+		ID:                   "settings-1",
+		UserID:               "user-1",
+		Channel:              entity.ChannelEmail,
+		Enabled:              true,
+		NotifyOnAgentOffline: false,
+	}
+	repo.settings[settings.ID] = settings
+
+	agent := &entity.Agent{
+		Paw:      "test-paw",
+		Hostname: "test-host",
+		Platform: "linux",
+		LastSeen: time.Now(),
+	}
+
+	err := service.NotifyAgentOffline(context.Background(), agent)
+	if err != nil {
+		t.Fatalf("NotifyAgentOffline failed: %v", err)
+	}
+
+	if len(repo.notifications) != 0 {
+		t.Errorf("len(notifications) = %d, want 0", len(repo.notifications))
+	}
+}
+
+func TestNotificationService_NotifyExecutionCompleted_ScoreAboveThreshold(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	service := NewNotificationService(repo, userRepo, nil, "https://localhost:8443", nil)
+
+	settings := &entity.NotificationSettings{
+		ID:                  "settings-1",
+		UserID:              "user-1",
+		Channel:             entity.ChannelEmail,
+		Enabled:             true,
+		NotifyOnComplete:    true,
+		NotifyOnScoreAlert:  true,
+		ScoreAlertThreshold: 70.0,
+	}
+	repo.settings[settings.ID] = settings
+
+	execution := &entity.Execution{
+		ID:        "exec-1",
+		StartedAt: time.Now(),
+		Score: &entity.SecurityScore{
+			Overall: 85.0, // Above threshold
+		},
+	}
+
+	err := service.NotifyExecutionCompleted(context.Background(), execution, "Test Scenario")
+	if err != nil {
+		t.Fatalf("NotifyExecutionCompleted failed: %v", err)
+	}
+
+	// Should have only 1 notification (no score alert)
+	if len(repo.notifications) != 1 {
+		t.Errorf("len(notifications) = %d, want 1", len(repo.notifications))
+	}
+}
+
+func TestBuildExecutionCompletedData(t *testing.T) {
+	execution := &entity.Execution{
+		ID: "exec-1",
+		Score: &entity.SecurityScore{
+			Overall:    75.5,
+			Blocked:    3,
+			Detected:   2,
+			Successful: 1,
+			Total:      6,
+		},
+	}
+
+	data, score := buildExecutionCompletedData(execution, "Test Scenario", "https://dashboard")
+
+	if score != 75.5 {
+		t.Errorf("score = %v, want 75.5", score)
+	}
+
+	if data["ScenarioName"] != "Test Scenario" {
+		t.Errorf("ScenarioName = %v, want Test Scenario", data["ScenarioName"])
+	}
+
+	if data["Blocked"] != 3 {
+		t.Errorf("Blocked = %v, want 3", data["Blocked"])
+	}
+}
+
+func TestBuildExecutionCompletedData_NilScore(t *testing.T) {
+	execution := &entity.Execution{
+		ID:    "exec-1",
+		Score: nil,
+	}
+
+	data, score := buildExecutionCompletedData(execution, "Test Scenario", "https://dashboard")
+
+	if score != 0.0 {
+		t.Errorf("score = %v, want 0.0", score)
+	}
+
+	if data["Blocked"] != 0 {
+		t.Errorf("Blocked = %v, want 0", data["Blocked"])
+	}
+}
+
+func TestShouldSendEmail(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings *entity.NotificationSettings
+		want     bool
+	}{
+		{
+			name: "email channel with address",
+			settings: &entity.NotificationSettings{
+				Channel:      entity.ChannelEmail,
+				EmailAddress: "test@example.com",
+			},
+			want: true,
+		},
+		{
+			name: "email channel without address",
+			settings: &entity.NotificationSettings{
+				Channel:      entity.ChannelEmail,
+				EmailAddress: "",
+			},
+			want: false,
+		},
+		{
+			name: "webhook channel",
+			settings: &entity.NotificationSettings{
+				Channel:      entity.ChannelWebhook,
+				EmailAddress: "test@example.com",
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldSendEmail(tt.settings)
+			if got != tt.want {
+				t.Errorf("shouldSendEmail() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildEmailMessage(t *testing.T) {
+	msg := buildEmailMessage("from@example.com", "to@example.com", "Test Subject", "Test Body")
+
+	if !contains(msg, "From: from@example.com") {
+		t.Error("Message should contain From header")
+	}
+	if !contains(msg, "To: to@example.com") {
+		t.Error("Message should contain To header")
+	}
+	if !contains(msg, "Subject: Test Subject") {
+		t.Error("Message should contain Subject header")
+	}
+	if !contains(msg, "Test Body") {
+		t.Error("Message should contain body")
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRenderEmailTemplate(t *testing.T) {
+	tmpl := "Hello {{.Name}}, your score is {{.Score}}%"
+	data := map[string]any{
+		"Name":  "User",
+		"Score": 85,
+	}
+
+	result, err := renderEmailTemplate(tmpl, data)
+	if err != nil {
+		t.Fatalf("renderEmailTemplate failed: %v", err)
+	}
+
+	expected := "Hello User, your score is 85%"
+	if result != expected {
+		t.Errorf("result = %q, want %q", result, expected)
+	}
+}
+
+func TestRenderEmailTemplate_InvalidTemplate(t *testing.T) {
+	tmpl := "Hello {{.Name"
+	data := map[string]any{"Name": "User"}
+
+	_, err := renderEmailTemplate(tmpl, data)
+	if err == nil {
+		t.Error("renderEmailTemplate should fail with invalid template")
+	}
+}

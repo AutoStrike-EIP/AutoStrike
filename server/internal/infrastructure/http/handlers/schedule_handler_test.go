@@ -14,65 +14,44 @@ import (
 	"autostrike/internal/domain/entity"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
-// mockScheduleService implements the ScheduleService interface for testing
-type mockScheduleService struct {
+// mockScheduleRepo implements repository.ScheduleRepository for testing
+type mockScheduleRepo struct {
 	schedules  map[string]*entity.Schedule
 	runs       map[string][]*entity.ScheduleRun
 	createErr  error
 	updateErr  error
 	deleteErr  error
 	findErr    error
-	pauseErr   error
-	resumeErr  error
-	runNowErr  error
-	getRunsErr error
+	createRunErr error
 }
 
-func newMockScheduleService() *mockScheduleService {
-	return &mockScheduleService{
+func newMockScheduleRepo() *mockScheduleRepo {
+	return &mockScheduleRepo{
 		schedules: make(map[string]*entity.Schedule),
 		runs:      make(map[string][]*entity.ScheduleRun),
 	}
 }
 
-func (m *mockScheduleService) Create(ctx context.Context, req *application.CreateScheduleRequest, userID string) (*entity.Schedule, error) {
+func (m *mockScheduleRepo) Create(ctx context.Context, schedule *entity.Schedule) error {
 	if m.createErr != nil {
-		return nil, m.createErr
-	}
-	schedule := &entity.Schedule{
-		ID:          "sched-test-1",
-		Name:        req.Name,
-		Description: req.Description,
-		ScenarioID:  req.ScenarioID,
-		Frequency:   req.Frequency,
-		SafeMode:    req.SafeMode,
-		Status:      entity.ScheduleStatusActive,
-		CreatedBy:   userID,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		return m.createErr
 	}
 	m.schedules[schedule.ID] = schedule
-	return schedule, nil
+	return nil
 }
 
-func (m *mockScheduleService) Update(ctx context.Context, id string, req *application.CreateScheduleRequest) (*entity.Schedule, error) {
+func (m *mockScheduleRepo) Update(ctx context.Context, schedule *entity.Schedule) error {
 	if m.updateErr != nil {
-		return nil, m.updateErr
+		return m.updateErr
 	}
-	schedule, ok := m.schedules[id]
-	if !ok {
-		return nil, application.ErrScheduleNotFound
-	}
-	schedule.Name = req.Name
-	schedule.Description = req.Description
-	schedule.ScenarioID = req.ScenarioID
-	schedule.UpdatedAt = time.Now()
-	return schedule, nil
+	m.schedules[schedule.ID] = schedule
+	return nil
 }
 
-func (m *mockScheduleService) Delete(ctx context.Context, id string) error {
+func (m *mockScheduleRepo) Delete(ctx context.Context, id string) error {
 	if m.deleteErr != nil {
 		return m.deleteErr
 	}
@@ -80,7 +59,7 @@ func (m *mockScheduleService) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (m *mockScheduleService) GetByID(ctx context.Context, id string) (*entity.Schedule, error) {
+func (m *mockScheduleRepo) FindByID(ctx context.Context, id string) (*entity.Schedule, error) {
 	if m.findErr != nil {
 		return nil, m.findErr
 	}
@@ -90,7 +69,7 @@ func (m *mockScheduleService) GetByID(ctx context.Context, id string) (*entity.S
 	return nil, nil
 }
 
-func (m *mockScheduleService) GetAll(ctx context.Context) ([]*entity.Schedule, error) {
+func (m *mockScheduleRepo) FindAll(ctx context.Context) ([]*entity.Schedule, error) {
 	if m.findErr != nil {
 		return nil, m.findErr
 	}
@@ -101,7 +80,7 @@ func (m *mockScheduleService) GetAll(ctx context.Context) ([]*entity.Schedule, e
 	return result, nil
 }
 
-func (m *mockScheduleService) GetByStatus(ctx context.Context, status entity.ScheduleStatus) ([]*entity.Schedule, error) {
+func (m *mockScheduleRepo) FindByStatus(ctx context.Context, status entity.ScheduleStatus) ([]*entity.Schedule, error) {
 	if m.findErr != nil {
 		return nil, m.findErr
 	}
@@ -114,228 +93,82 @@ func (m *mockScheduleService) GetByStatus(ctx context.Context, status entity.Sch
 	return result, nil
 }
 
-func (m *mockScheduleService) Pause(ctx context.Context, id string) (*entity.Schedule, error) {
-	if m.pauseErr != nil {
-		return nil, m.pauseErr
-	}
-	schedule, ok := m.schedules[id]
-	if !ok {
-		return nil, application.ErrScheduleNotFound
-	}
-	schedule.Status = entity.ScheduleStatusPaused
-	return schedule, nil
+func (m *mockScheduleRepo) FindActiveSchedulesDue(ctx context.Context, now time.Time) ([]*entity.Schedule, error) {
+	return nil, nil
 }
 
-func (m *mockScheduleService) Resume(ctx context.Context, id string) (*entity.Schedule, error) {
-	if m.resumeErr != nil {
-		return nil, m.resumeErr
+func (m *mockScheduleRepo) FindByScenarioID(ctx context.Context, scenarioID string) ([]*entity.Schedule, error) {
+	var result []*entity.Schedule
+	for _, s := range m.schedules {
+		if s.ScenarioID == scenarioID {
+			result = append(result, s)
+		}
 	}
-	schedule, ok := m.schedules[id]
-	if !ok {
-		return nil, application.ErrScheduleNotFound
-	}
-	schedule.Status = entity.ScheduleStatusActive
-	return schedule, nil
+	return result, nil
 }
 
-func (m *mockScheduleService) RunNow(ctx context.Context, id string) (*entity.ScheduleRun, error) {
-	if m.runNowErr != nil {
-		return nil, m.runNowErr
+func (m *mockScheduleRepo) CreateRun(ctx context.Context, run *entity.ScheduleRun) error {
+	if m.createRunErr != nil {
+		return m.createRunErr
 	}
-	if _, ok := m.schedules[id]; !ok {
-		return nil, application.ErrScheduleNotFound
-	}
-	run := &entity.ScheduleRun{
-		ID:         "run-test-1",
-		ScheduleID: id,
-		StartedAt:  time.Now(),
-		Status:     "running",
-	}
-	return run, nil
+	m.runs[run.ScheduleID] = append(m.runs[run.ScheduleID], run)
+	return nil
 }
 
-func (m *mockScheduleService) GetRuns(ctx context.Context, scheduleID string, limit int) ([]*entity.ScheduleRun, error) {
-	if m.getRunsErr != nil {
-		return nil, m.getRunsErr
-	}
-	return m.runs[scheduleID], nil
+func (m *mockScheduleRepo) UpdateRun(ctx context.Context, run *entity.ScheduleRun) error {
+	return nil
 }
 
-func setupScheduleTestRouter(service *mockScheduleService) *gin.Engine {
+func (m *mockScheduleRepo) FindRunsByScheduleID(ctx context.Context, scheduleID string, limit int) ([]*entity.ScheduleRun, error) {
+	runs := m.runs[scheduleID]
+	if len(runs) > limit {
+		runs = runs[:limit]
+	}
+	return runs, nil
+}
+
+// setupRealScheduleHandler creates a handler with real service using mock repo
+func setupRealScheduleHandler(repo *mockScheduleRepo) (*ScheduleHandler, *gin.Engine) {
 	gin.SetMode(gin.TestMode)
+	logger := zap.NewNop()
+
+	// Create real service with mock repo (nil execution service for most tests)
+	service := application.NewScheduleService(repo, nil, logger)
+	handler := NewScheduleHandler(service)
+
 	router := gin.New()
-
-	// Create a wrapper service that implements the expected interface
-	// For testing, we'll use a simple approach
-	handler := &ScheduleHandler{
-		scheduleService: nil, // We'll mock at the handler level
-	}
-
 	api := router.Group("/api/v1")
 	api.Use(func(c *gin.Context) {
 		c.Set("user_id", "test-user")
 		c.Next()
 	})
+	handler.RegisterRoutes(api)
 
-	// Register routes manually for testing with mock service
-	schedules := api.Group("/schedules")
-	{
-		schedules.GET("", func(c *gin.Context) {
-			schedules, err := service.GetAll(c.Request.Context())
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get schedules"})
-				return
-			}
-			if schedules == nil {
-				schedules = []*entity.Schedule{}
-			}
-			c.JSON(http.StatusOK, schedules)
-		})
-		schedules.GET("/:id", func(c *gin.Context) {
-			id := c.Param("id")
-			schedule, err := service.GetByID(c.Request.Context(), id)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get schedule"})
-				return
-			}
-			if schedule == nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": "schedule not found"})
-				return
-			}
-			c.JSON(http.StatusOK, schedule)
-		})
-		schedules.POST("", func(c *gin.Context) {
-			var req CreateScheduleRequest
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			var startAt *time.Time
-			if req.StartAt != "" {
-				t, err := time.Parse(time.RFC3339, req.StartAt)
-				if err != nil {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "invalid start_at format"})
-					return
-				}
-				startAt = &t
-			}
-
-			createReq := &application.CreateScheduleRequest{
-				Name:        req.Name,
-				Description: req.Description,
-				ScenarioID:  req.ScenarioID,
-				Frequency:   entity.ScheduleFrequency(req.Frequency),
-				SafeMode:    req.SafeMode,
-				StartAt:     startAt,
-			}
-
-			schedule, err := service.Create(c.Request.Context(), createReq, "test-user")
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusCreated, schedule)
-		})
-		schedules.PUT("/:id", func(c *gin.Context) {
-			id := c.Param("id")
-			var req CreateScheduleRequest
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			updateReq := &application.CreateScheduleRequest{
-				Name:        req.Name,
-				Description: req.Description,
-				ScenarioID:  req.ScenarioID,
-				Frequency:   entity.ScheduleFrequency(req.Frequency),
-				SafeMode:    req.SafeMode,
-			}
-
-			schedule, err := service.Update(c.Request.Context(), id, updateReq)
-			if err != nil {
-				if errors.Is(err, application.ErrScheduleNotFound) {
-					c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-					return
-				}
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusOK, schedule)
-		})
-		schedules.DELETE("/:id", func(c *gin.Context) {
-			id := c.Param("id")
-			if err := service.Delete(c.Request.Context(), id); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete schedule"})
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"status": "deleted"})
-		})
-		schedules.POST("/:id/pause", func(c *gin.Context) {
-			id := c.Param("id")
-			schedule, err := service.Pause(c.Request.Context(), id)
-			if err != nil {
-				if errors.Is(err, application.ErrScheduleNotFound) {
-					c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-					return
-				}
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusOK, schedule)
-		})
-		schedules.POST("/:id/resume", func(c *gin.Context) {
-			id := c.Param("id")
-			schedule, err := service.Resume(c.Request.Context(), id)
-			if err != nil {
-				if errors.Is(err, application.ErrScheduleNotFound) {
-					c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-					return
-				}
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusOK, schedule)
-		})
-		schedules.POST("/:id/run", func(c *gin.Context) {
-			id := c.Param("id")
-			run, err := service.RunNow(c.Request.Context(), id)
-			if err != nil {
-				if errors.Is(err, application.ErrScheduleNotFound) {
-					c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-					return
-				}
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusOK, run)
-		})
-		schedules.GET("/:id/runs", func(c *gin.Context) {
-			id := c.Param("id")
-			runs, err := service.GetRuns(c.Request.Context(), id, 20)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get runs"})
-				return
-			}
-			if runs == nil {
-				runs = []*entity.ScheduleRun{}
-			}
-			c.JSON(http.StatusOK, runs)
-		})
-	}
-
-	_ = handler // Suppress unused variable warning
-	return router
+	return handler, router
 }
 
-func TestScheduleHandler_GetAll(t *testing.T) {
-	service := newMockScheduleService()
-	service.schedules["sched-1"] = &entity.Schedule{
+// setupRealScheduleHandlerNoAuth creates a handler without auth middleware
+func setupRealScheduleHandlerNoAuth(repo *mockScheduleRepo) (*ScheduleHandler, *gin.Engine) {
+	gin.SetMode(gin.TestMode)
+	logger := zap.NewNop()
+
+	service := application.NewScheduleService(repo, nil, logger)
+	handler := NewScheduleHandler(service)
+
+	router := gin.New()
+	api := router.Group("/api/v1")
+	handler.RegisterRoutes(api)
+
+	return handler, router
+}
+
+func TestScheduleHandler_GetAll_Success(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
 		ID:   "sched-1",
 		Name: "Test Schedule",
 	}
-	router := setupScheduleTestRouter(service)
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules", nil)
 	w := httptest.NewRecorder()
@@ -356,8 +189,8 @@ func TestScheduleHandler_GetAll(t *testing.T) {
 }
 
 func TestScheduleHandler_GetAll_Empty(t *testing.T) {
-	service := newMockScheduleService()
-	router := setupScheduleTestRouter(service)
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules", nil)
 	w := httptest.NewRecorder()
@@ -377,10 +210,23 @@ func TestScheduleHandler_GetAll_Empty(t *testing.T) {
 	}
 }
 
+func TestScheduleHandler_GetAll_Unauthorized(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandlerNoAuth(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
 func TestScheduleHandler_GetAll_Error(t *testing.T) {
-	service := newMockScheduleService()
-	service.findErr = errors.New("database error")
-	router := setupScheduleTestRouter(service)
+	repo := newMockScheduleRepo()
+	repo.findErr = errors.New("database error")
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules", nil)
 	w := httptest.NewRecorder()
@@ -391,13 +237,13 @@ func TestScheduleHandler_GetAll_Error(t *testing.T) {
 	}
 }
 
-func TestScheduleHandler_GetByID(t *testing.T) {
-	service := newMockScheduleService()
-	service.schedules["sched-1"] = &entity.Schedule{
+func TestScheduleHandler_GetByID_Success(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
 		ID:   "sched-1",
 		Name: "Test Schedule",
 	}
-	router := setupScheduleTestRouter(service)
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1", nil)
 	w := httptest.NewRecorder()
@@ -418,8 +264,8 @@ func TestScheduleHandler_GetByID(t *testing.T) {
 }
 
 func TestScheduleHandler_GetByID_NotFound(t *testing.T) {
-	service := newMockScheduleService()
-	router := setupScheduleTestRouter(service)
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -430,9 +276,36 @@ func TestScheduleHandler_GetByID_NotFound(t *testing.T) {
 	}
 }
 
-func TestScheduleHandler_Create(t *testing.T) {
-	service := newMockScheduleService()
-	router := setupScheduleTestRouter(service)
+func TestScheduleHandler_GetByID_Unauthorized(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandlerNoAuth(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestScheduleHandler_GetByID_Error(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.findErr = errors.New("database error")
+	_, router := setupRealScheduleHandler(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestScheduleHandler_Create_Success(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
 
 	body := CreateScheduleRequest{
 		Name:       "New Schedule",
@@ -461,26 +334,38 @@ func TestScheduleHandler_Create(t *testing.T) {
 	}
 }
 
-func TestScheduleHandler_Create_InvalidJSON(t *testing.T) {
-	service := newMockScheduleService()
-	router := setupScheduleTestRouter(service)
+func TestScheduleHandler_Create_WithStartAt(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules", bytes.NewReader([]byte("invalid json")))
+	startAt := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	body := CreateScheduleRequest{
+		Name:       "Scheduled Task",
+		ScenarioID: "scenario-1",
+		Frequency:  "once",
+		StartAt:    startAt,
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules", bytes.NewReader(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusBadRequest)
+	if w.Code != http.StatusCreated {
+		t.Errorf("Status = %d, want %d. Body: %s", w.Code, http.StatusCreated, w.Body.String())
 	}
 }
 
-func TestScheduleHandler_Create_MissingFields(t *testing.T) {
-	service := newMockScheduleService()
-	router := setupScheduleTestRouter(service)
+func TestScheduleHandler_Create_InvalidStartAt(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
 
-	body := map[string]string{
-		"name": "Test", // Missing required fields
+	body := CreateScheduleRequest{
+		Name:       "Scheduled Task",
+		ScenarioID: "scenario-1",
+		Frequency:  "once",
+		StartAt:    "invalid-date",
 	}
 	jsonBody, _ := json.Marshal(body)
 
@@ -494,13 +379,90 @@ func TestScheduleHandler_Create_MissingFields(t *testing.T) {
 	}
 }
 
-func TestScheduleHandler_Update(t *testing.T) {
-	service := newMockScheduleService()
-	service.schedules["sched-1"] = &entity.Schedule{
-		ID:   "sched-1",
-		Name: "Old Name",
+func TestScheduleHandler_Create_InvalidJSON(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules", bytes.NewReader([]byte("invalid json")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
-	router := setupScheduleTestRouter(service)
+}
+
+func TestScheduleHandler_Create_MissingFields(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
+
+	body := map[string]string{
+		"name": "Test",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestScheduleHandler_Create_Unauthorized(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandlerNoAuth(repo)
+
+	body := CreateScheduleRequest{
+		Name:       "New Schedule",
+		ScenarioID: "scenario-1",
+		Frequency:  "daily",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestScheduleHandler_Create_Error(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.createErr = errors.New("database error")
+	_, router := setupRealScheduleHandler(repo)
+
+	body := CreateScheduleRequest{
+		Name:       "New Schedule",
+		ScenarioID: "scenario-1",
+		Frequency:  "daily",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestScheduleHandler_Update_Success(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
+		ID:     "sched-1",
+		Name:   "Old Name",
+		Status: entity.ScheduleStatusActive,
+	}
+	_, router := setupRealScheduleHandler(repo)
 
 	body := CreateScheduleRequest{
 		Name:       "Updated Name",
@@ -515,7 +477,7 @@ func TestScheduleHandler_Update(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+		t.Errorf("Status = %d, want %d. Body: %s", w.Code, http.StatusOK, w.Body.String())
 	}
 
 	var schedule entity.Schedule
@@ -528,9 +490,64 @@ func TestScheduleHandler_Update(t *testing.T) {
 	}
 }
 
+func TestScheduleHandler_Update_WithStartAt(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
+		ID:     "sched-1",
+		Name:   "Old Name",
+		Status: entity.ScheduleStatusActive,
+	}
+	_, router := setupRealScheduleHandler(repo)
+
+	startAt := time.Now().Add(48 * time.Hour).Format(time.RFC3339)
+	body := CreateScheduleRequest{
+		Name:       "Updated Name",
+		ScenarioID: "scenario-1",
+		Frequency:  "once",
+		StartAt:    startAt,
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/schedules/sched-1", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestScheduleHandler_Update_InvalidStartAt(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
+		ID:     "sched-1",
+		Name:   "Old Name",
+		Status: entity.ScheduleStatusActive,
+	}
+	_, router := setupRealScheduleHandler(repo)
+
+	body := CreateScheduleRequest{
+		Name:       "Updated Name",
+		ScenarioID: "scenario-1",
+		Frequency:  "once",
+		StartAt:    "bad-date-format",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/schedules/sched-1", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
 func TestScheduleHandler_Update_NotFound(t *testing.T) {
-	service := newMockScheduleService()
-	router := setupScheduleTestRouter(service)
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
 
 	body := CreateScheduleRequest{
 		Name:       "Test",
@@ -549,10 +566,45 @@ func TestScheduleHandler_Update_NotFound(t *testing.T) {
 	}
 }
 
-func TestScheduleHandler_Delete(t *testing.T) {
-	service := newMockScheduleService()
-	service.schedules["sched-1"] = &entity.Schedule{ID: "sched-1"}
-	router := setupScheduleTestRouter(service)
+func TestScheduleHandler_Update_Unauthorized(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandlerNoAuth(repo)
+
+	body := CreateScheduleRequest{
+		Name:       "Test",
+		ScenarioID: "scenario-1",
+		Frequency:  "daily",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/schedules/sched-1", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestScheduleHandler_Update_InvalidJSON(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/schedules/sched-1", bytes.NewReader([]byte("invalid")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestScheduleHandler_Delete_Success(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{ID: "sched-1"}
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/schedules/sched-1", nil)
 	w := httptest.NewRecorder()
@@ -563,10 +615,23 @@ func TestScheduleHandler_Delete(t *testing.T) {
 	}
 }
 
+func TestScheduleHandler_Delete_Unauthorized(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandlerNoAuth(repo)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/schedules/sched-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
 func TestScheduleHandler_Delete_Error(t *testing.T) {
-	service := newMockScheduleService()
-	service.deleteErr = errors.New("database error")
-	router := setupScheduleTestRouter(service)
+	repo := newMockScheduleRepo()
+	repo.deleteErr = errors.New("database error")
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/schedules/sched-1", nil)
 	w := httptest.NewRecorder()
@@ -577,13 +642,13 @@ func TestScheduleHandler_Delete_Error(t *testing.T) {
 	}
 }
 
-func TestScheduleHandler_Pause(t *testing.T) {
-	service := newMockScheduleService()
-	service.schedules["sched-1"] = &entity.Schedule{
+func TestScheduleHandler_Pause_Success(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
 		ID:     "sched-1",
 		Status: entity.ScheduleStatusActive,
 	}
-	router := setupScheduleTestRouter(service)
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/pause", nil)
 	w := httptest.NewRecorder()
@@ -604,8 +669,8 @@ func TestScheduleHandler_Pause(t *testing.T) {
 }
 
 func TestScheduleHandler_Pause_NotFound(t *testing.T) {
-	service := newMockScheduleService()
-	router := setupScheduleTestRouter(service)
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/nonexistent/pause", nil)
 	w := httptest.NewRecorder()
@@ -616,13 +681,26 @@ func TestScheduleHandler_Pause_NotFound(t *testing.T) {
 	}
 }
 
-func TestScheduleHandler_Resume(t *testing.T) {
-	service := newMockScheduleService()
-	service.schedules["sched-1"] = &entity.Schedule{
+func TestScheduleHandler_Pause_Unauthorized(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandlerNoAuth(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/pause", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestScheduleHandler_Resume_Success(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
 		ID:     "sched-1",
 		Status: entity.ScheduleStatusPaused,
 	}
-	router := setupScheduleTestRouter(service)
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/resume", nil)
 	w := httptest.NewRecorder()
@@ -643,8 +721,8 @@ func TestScheduleHandler_Resume(t *testing.T) {
 }
 
 func TestScheduleHandler_Resume_NotFound(t *testing.T) {
-	service := newMockScheduleService()
-	router := setupScheduleTestRouter(service)
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/nonexistent/resume", nil)
 	w := httptest.NewRecorder()
@@ -655,32 +733,22 @@ func TestScheduleHandler_Resume_NotFound(t *testing.T) {
 	}
 }
 
-func TestScheduleHandler_RunNow(t *testing.T) {
-	service := newMockScheduleService()
-	service.schedules["sched-1"] = &entity.Schedule{ID: "sched-1"}
-	router := setupScheduleTestRouter(service)
+func TestScheduleHandler_Resume_Unauthorized(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandlerNoAuth(repo)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/run", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/resume", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
-	}
-
-	var run entity.ScheduleRun
-	if err := json.Unmarshal(w.Body.Bytes(), &run); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
-
-	if run.Status != "running" {
-		t.Errorf("Status = %q, want %q", run.Status, "running")
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
 }
 
 func TestScheduleHandler_RunNow_NotFound(t *testing.T) {
-	service := newMockScheduleService()
-	router := setupScheduleTestRouter(service)
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/nonexistent/run", nil)
 	w := httptest.NewRecorder()
@@ -691,13 +759,26 @@ func TestScheduleHandler_RunNow_NotFound(t *testing.T) {
 	}
 }
 
-func TestScheduleHandler_GetRuns(t *testing.T) {
-	service := newMockScheduleService()
-	service.runs["sched-1"] = []*entity.ScheduleRun{
+func TestScheduleHandler_RunNow_Unauthorized(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandlerNoAuth(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/run", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestScheduleHandler_GetRuns_Success(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.runs["sched-1"] = []*entity.ScheduleRun{
 		{ID: "run-1", ScheduleID: "sched-1", Status: "completed"},
 		{ID: "run-2", ScheduleID: "sched-1", Status: "failed"},
 	}
-	router := setupScheduleTestRouter(service)
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1/runs", nil)
 	w := httptest.NewRecorder()
@@ -717,9 +798,50 @@ func TestScheduleHandler_GetRuns(t *testing.T) {
 	}
 }
 
+func TestScheduleHandler_GetRuns_WithLimit(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.runs["sched-1"] = []*entity.ScheduleRun{
+		{ID: "run-1", ScheduleID: "sched-1"},
+		{ID: "run-2", ScheduleID: "sched-1"},
+		{ID: "run-3", ScheduleID: "sched-1"},
+	}
+	_, router := setupRealScheduleHandler(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1/runs?limit=2", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var runs []*entity.ScheduleRun
+	if err := json.Unmarshal(w.Body.Bytes(), &runs); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if len(runs) != 2 {
+		t.Errorf("len(runs) = %d, want 2", len(runs))
+	}
+}
+
+func TestScheduleHandler_GetRuns_InvalidLimit(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
+
+	// Invalid limit should use default (20)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1/runs?limit=invalid", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
 func TestScheduleHandler_GetRuns_Empty(t *testing.T) {
-	service := newMockScheduleService()
-	router := setupScheduleTestRouter(service)
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1/runs", nil)
 	w := httptest.NewRecorder()
@@ -739,17 +861,16 @@ func TestScheduleHandler_GetRuns_Empty(t *testing.T) {
 	}
 }
 
-func TestScheduleHandler_GetRuns_Error(t *testing.T) {
-	service := newMockScheduleService()
-	service.getRunsErr = errors.New("database error")
-	router := setupScheduleTestRouter(service)
+func TestScheduleHandler_GetRuns_Unauthorized(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandlerNoAuth(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1/runs", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
 }
 
@@ -768,4 +889,70 @@ func TestScheduleHandler_RegisterRoutes(t *testing.T) {
 
 	// Should not panic
 	handler.RegisterRoutes(api)
+}
+
+func TestScheduleHandler_Create_CronFrequency(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
+
+	body := CreateScheduleRequest{
+		Name:       "Cron Schedule",
+		ScenarioID: "scenario-1",
+		Frequency:  "cron",
+		CronExpr:   "0 * * * *",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("Status = %d, want %d. Body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+}
+
+func TestScheduleHandler_Create_CronFrequency_MissingExpr(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
+
+	body := CreateScheduleRequest{
+		Name:       "Cron Schedule",
+		ScenarioID: "scenario-1",
+		Frequency:  "cron",
+		// Missing CronExpr
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestScheduleHandler_Create_CronFrequency_InvalidExpr(t *testing.T) {
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
+
+	body := CreateScheduleRequest{
+		Name:       "Cron Schedule",
+		ScenarioID: "scenario-1",
+		Frequency:  "cron",
+		CronExpr:   "invalid cron",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
 }

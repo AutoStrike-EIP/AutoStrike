@@ -257,9 +257,14 @@ func calculateTrendSummary(allScores []float64, totalExecutions int, tracker *sc
 	summary.StartScore = allScores[0]
 	summary.EndScore = allScores[len(allScores)-1]
 
+	// Calculate percentage change, handling zero division edge cases
 	if summary.StartScore > 0 {
 		summary.PercentageChange = ((summary.EndScore - summary.StartScore) / summary.StartScore) * 100
+	} else if summary.EndScore > 0 {
+		// StartScore is 0 but EndScore is positive: represents full improvement from baseline
+		summary.PercentageChange = 100
 	}
+	// If both are 0, PercentageChange remains 0 (no change)
 
 	summary.OverallTrend = determineTrend(summary.PercentageChange)
 	return summary

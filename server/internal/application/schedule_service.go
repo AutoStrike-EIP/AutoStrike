@@ -259,7 +259,7 @@ func (s *ScheduleService) Stop() {
 func (s *ScheduleService) runScheduler() {
 	defer s.wg.Done()
 
-	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
+	ticker := time.NewTicker(10 * time.Second) // Check every 10 seconds for better precision
 	defer ticker.Stop()
 
 	for {

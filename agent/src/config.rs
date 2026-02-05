@@ -69,8 +69,8 @@ impl AgentConfig {
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
         // Priority: CLI arg > config file > None
-        let resolved_secret = agent_secret
-            .or_else(|| file_config.as_ref().and_then(|c| c.agent_secret.clone()));
+        let resolved_secret =
+            agent_secret.or_else(|| file_config.as_ref().and_then(|c| c.agent_secret.clone()));
 
         Ok(AgentConfig {
             server_url: server.to_string(),
@@ -79,7 +79,10 @@ impl AgentConfig {
                 .as_ref()
                 .map(|c| c.heartbeat_interval)
                 .unwrap_or(30),
-            tls: file_config.as_ref().map(|c| c.tls.clone()).unwrap_or_default(),
+            tls: file_config
+                .as_ref()
+                .map(|c| c.tls.clone())
+                .unwrap_or_default(),
             agent_secret: resolved_secret,
         })
     }

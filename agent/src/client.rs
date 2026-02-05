@@ -368,10 +368,7 @@ mod tests {
         let sys_info = create_test_sys_info();
 
         let client = AgentClient::new(config, sys_info).unwrap();
-        assert_eq!(
-            client.config.agent_secret,
-            Some("test-secret".to_string())
-        );
+        assert_eq!(client.config.agent_secret, Some("test-secret".to_string()));
     }
 
     #[tokio::test]

@@ -94,14 +94,14 @@ export default function Scenarios() {
     },
     onError: (error: { response?: { data?: { error?: string; imported?: number; failed?: number; errors?: string[] } } }) => {
       const data = error.response?.data;
-      if (data?.imported !== undefined) {
+      if (data?.imported === undefined) {
+        toast.error(data?.error || 'Failed to import scenarios');
+      } else {
         setImportResult({
           imported: data.imported,
           failed: data.failed || 0,
           errors: data.errors,
         });
-      } else {
-        toast.error(data?.error || 'Failed to import scenarios');
       }
     },
   });
@@ -303,35 +303,7 @@ export default function Scenarios() {
               </button>
             </div>
             <div className="p-6">
-              {!importResult ? (
-                <div className="space-y-4">
-                  <p className="text-sm text-gray-600">
-                    Upload a JSON file containing scenarios to import. The file should be in AutoStrike export format.
-                  </p>
-                  <button
-                    type="button"
-                    className="w-full border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-primary-500 transition-colors bg-transparent"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <ArrowUpTrayIcon className="h-10 w-10 mx-auto text-gray-400 mb-3" />
-                    <p className="text-sm text-gray-600">
-                      Click to select a JSON file
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      or drag and drop
-                    </p>
-                  </button>
-                  {importMutation.isPending && (
-                    <div className="flex items-center justify-center gap-2 text-gray-600">
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      <span>Importing...</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
+              {importResult ? (
                 <div className="space-y-4">
                   {/* Import Results */}
                   <div className="flex items-center gap-3">
@@ -368,6 +340,34 @@ export default function Scenarios() {
                       Done
                     </button>
                   </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-600">
+                    Upload a JSON file containing scenarios to import. The file should be in AutoStrike export format.
+                  </p>
+                  <button
+                    type="button"
+                    className="w-full border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-primary-500 transition-colors bg-transparent"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <ArrowUpTrayIcon className="h-10 w-10 mx-auto text-gray-400 mb-3" />
+                    <p className="text-sm text-gray-600">
+                      Click to select a JSON file
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      or drag and drop
+                    </p>
+                  </button>
+                  {importMutation.isPending && (
+                    <div className="flex items-center justify-center gap-2 text-gray-600">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Importing...</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -256,8 +256,8 @@ export default function Users() {
             checked={includeInactive}
             onChange={(e) => setIncludeInactive(e.target.checked)}
             className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-          Show inactive users
+          />{' '}
+          <span>Show inactive users</span>
         </label>
       </div>
 
@@ -286,7 +286,7 @@ export default function Users() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {users.map((user) => (
-                <tr key={user.id} className={!user.is_active ? 'bg-gray-50' : ''}>
+                <tr key={user.id} className={user.is_active ? '' : 'bg-gray-50'}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="h-10 w-10 flex-shrink-0">

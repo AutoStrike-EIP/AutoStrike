@@ -338,8 +338,7 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 	currentUserID, _ := c.Get("user_id")
 	currentUserIDStr, _ := currentUserID.(string)
 
-	err := h.authService.DeactivateUser(c.Request.Context(), id, currentUserIDStr)
-	if err != nil {
+	if err := h.authService.DeactivateUser(c.Request.Context(), id, currentUserIDStr); err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
 			return
@@ -372,8 +371,7 @@ func (h *AdminHandler) ReactivateUser(c *gin.Context) {
 		return
 	}
 
-	err := h.authService.ReactivateUser(c.Request.Context(), id)
-	if err != nil {
+	if err := h.authService.ReactivateUser(c.Request.Context(), id); err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
 			return
@@ -409,8 +407,7 @@ func (h *AdminHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	err := h.authService.ResetPassword(c.Request.Context(), id, req.NewPassword)
-	if err != nil {
+	if err := h.authService.ResetPassword(c.Request.Context(), id, req.NewPassword); err != nil {
 		if errors.Is(err, application.ErrUserNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": errUserNotFound})
 			return

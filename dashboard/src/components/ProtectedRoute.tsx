@@ -36,7 +36,7 @@ function hasRequiredRole(userRole: UserRole | undefined, requiredRole?: UserRole
 }
 
 export function ProtectedRoute({ children, requiredRole, allowedRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, user, authEnabled } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -53,6 +53,11 @@ export function ProtectedRoute({ children, requiredRole, allowedRoles }: Protect
   if (!isAuthenticated) {
     // Redirect to login, preserving the intended destination
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Skip role check if auth is disabled (development mode - full access)
+  if (!authEnabled) {
+    return <>{children}</>;
   }
 
   // Check role-based access

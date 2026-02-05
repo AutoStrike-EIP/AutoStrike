@@ -44,8 +44,24 @@ function App() {
                   <Route path="/scenarios" element={<Scenarios />} />
                   <Route path="/executions" element={<Executions />} />
                   <Route path="/executions/:id" element={<ExecutionDetails />} />
-                  <Route path="/analytics" element={<Analytics />} />
-                  <Route path="/scheduler" element={<Scheduler />} />
+                  {/* Analytics - requires analyst role or higher */}
+                  <Route
+                    path="/analytics"
+                    element={
+                      <ProtectedRoute requiredRole="analyst">
+                        <Analytics />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Scheduler - requires analyst role or higher to view */}
+                  <Route
+                    path="/scheduler"
+                    element={
+                      <ProtectedRoute requiredRole="analyst">
+                        <Scheduler />
+                      </ProtectedRoute>
+                    }
+                  />
                   {/* Admin-only routes */}
                   <Route
                     path="/admin/users"

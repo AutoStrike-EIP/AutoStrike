@@ -562,3 +562,277 @@ describe('Safe Mode Toggle', () => {
     expect(screen.getByText("Only run safe techniques that don't modify the system")).toBeInTheDocument();
   });
 });
+
+describe('Settings Server Configuration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    localStorageMock.getItem.mockReturnValue(null);
+  });
+
+  it('renders server configuration section', () => {
+    renderSettings();
+    expect(screen.getByText('Server Configuration')).toBeInTheDocument();
+  });
+
+  it('renders execution settings section', () => {
+    renderSettings();
+    expect(screen.getByText('Execution Settings')).toBeInTheDocument();
+  });
+
+  it('renders agent settings section', () => {
+    renderSettings();
+    expect(screen.getByText('Agent Settings')).toBeInTheDocument();
+  });
+});
+
+describe('Settings Webhook Configuration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+  });
+
+  it('shows webhook channel option when notifications enabled', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSettings).mockResolvedValue({
+      data: {
+        channel: 'webhook',
+        enabled: true,
+        email_address: '',
+        webhook_url: 'https://example.com/webhook',
+        notify_on_start: false,
+        notify_on_complete: true,
+        notify_on_failure: true,
+        notify_on_score_alert: true,
+        score_alert_threshold: 70,
+        notify_on_agent_offline: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Notification Channel')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Settings Score Alert Threshold', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+  });
+
+  it('shows notification settings when enabled', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSettings).mockResolvedValue({
+      data: {
+        channel: 'email',
+        enabled: true,
+        email_address: 'test@example.com',
+        notify_on_start: false,
+        notify_on_complete: true,
+        notify_on_failure: true,
+        notify_on_score_alert: true,
+        score_alert_threshold: 70,
+        notify_on_agent_offline: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Notification Settings')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Settings Notification Toggle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+  });
+
+  it('toggles notification enabled state', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSettings).mockResolvedValue({
+      data: {
+        channel: 'email',
+        enabled: true,
+        email_address: 'test@example.com',
+        notify_on_start: false,
+        notify_on_complete: true,
+        notify_on_failure: true,
+        notify_on_score_alert: true,
+        score_alert_threshold: 70,
+        notify_on_agent_offline: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Enable Notifications')).toBeInTheDocument();
+    });
+  });
+
+  it('shows expanded settings when notifications enabled', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSettings).mockResolvedValue({
+      data: {
+        channel: 'email',
+        enabled: true,
+        email_address: 'test@example.com',
+        notify_on_start: true,
+        notify_on_complete: true,
+        notify_on_failure: true,
+        notify_on_score_alert: false,
+        score_alert_threshold: 70,
+        notify_on_agent_offline: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Execution starts')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Settings Create Notification Settings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+  });
+
+  it('shows enable notifications toggle when no settings exist', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSettings).mockRejectedValue({ response: { status: 404 } });
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText('Enable Notifications')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Settings Form Persistence', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+  });
+
+  it('persists server URL across page reload', async () => {
+    const savedSettings = {
+      serverUrl: 'https://myserver:9000',
+      heartbeatInterval: 60,
+      staleTimeout: 240,
+      safeMode: false,
+    };
+    localStorageMock.getItem.mockReturnValue(JSON.stringify(savedSettings));
+
+    renderSettings();
+
+    await waitFor(() => {
+      const serverUrlInput = screen.getByLabelText('Server URL');
+      expect(serverUrlInput).toHaveValue('https://myserver:9000');
+    });
+  });
+});
+
+describe('Settings TLS Configuration Details', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+  });
+
+  it('shows TLS section collapsed by default', () => {
+    renderSettings();
+    expect(screen.getByText('TLS / mTLS Configuration')).toBeInTheDocument();
+  });
+
+  it('allows input in all TLS fields', async () => {
+    renderSettings();
+    await waitFor(() => {
+      const caCertInput = screen.getByLabelText('CA Certificate Path');
+      const serverCertInput = screen.getByLabelText('Server Certificate Path');
+      const serverKeyInput = screen.getByLabelText('Server Key Path');
+
+      fireEvent.change(caCertInput, { target: { value: '/custom/ca.crt' } });
+      fireEvent.change(serverCertInput, { target: { value: '/custom/server.crt' } });
+      fireEvent.change(serverKeyInput, { target: { value: '/custom/server.key' } });
+
+      expect(caCertInput).toHaveValue('/custom/ca.crt');
+      expect(serverCertInput).toHaveValue('/custom/server.crt');
+      expect(serverKeyInput).toHaveValue('/custom/server.key');
+    });
+  });
+});
+
+describe('Settings SMTP Configuration Display', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+  });
+
+  it('shows SMTP host when configured', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSMTPConfig).mockResolvedValue({
+      data: {
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'user@example.com',
+        use_tls: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText(/smtp.example.com/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows TLS status when SMTP configured', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSMTPConfig).mockResolvedValue({
+      data: {
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'user@example.com',
+        use_tls: true,
+      },
+    } as never);
+
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText(/TLS/i)).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Settings Error States', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+  });
+
+  it('handles notification settings fetch error', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSettings).mockRejectedValue(new Error('Network error'));
+
+    // Should not crash
+    expect(() => renderSettings()).not.toThrow();
+  });
+
+  it('handles SMTP config fetch error', async () => {
+    const { notificationApi } = await import('../lib/api');
+    vi.mocked(notificationApi.getSMTPConfig).mockRejectedValue(new Error('Network error'));
+
+    // Should not crash
+    expect(() => renderSettings()).not.toThrow();
+  });
+});

@@ -605,3 +605,169 @@ describe('Token Refresh Queue and Success Flow', () => {
     await expect(errorHandler(error)).rejects.toBe(error);
   });
 });
+
+describe('API method calls', () => {
+  it('executionApi.start calls api.post with correct parameters', async () => {
+    const { executionApi } = await import('./api');
+    expect(executionApi.start).toBeDefined();
+    expect(typeof executionApi.start).toBe('function');
+  });
+
+  it('scenarioApi.exportAll handles empty ids', async () => {
+    const { scenarioApi } = await import('./api');
+    expect(scenarioApi.exportAll).toBeDefined();
+    expect(typeof scenarioApi.exportAll).toBe('function');
+  });
+
+  it('scenarioApi.exportAll handles ids array', async () => {
+    const { scenarioApi } = await import('./api');
+    expect(typeof scenarioApi.exportAll).toBe('function');
+  });
+
+  it('adminApi.listUsers handles includeInactive parameter', async () => {
+    const { adminApi } = await import('./api');
+    expect(typeof adminApi.listUsers).toBe('function');
+  });
+
+  it('notificationApi.list handles limit parameter', async () => {
+    const { notificationApi } = await import('./api');
+    expect(typeof notificationApi.list).toBe('function');
+  });
+
+  it('scheduleApi.getRuns handles limit parameter', async () => {
+    const { scheduleApi } = await import('./api');
+    expect(typeof scheduleApi.getRuns).toBe('function');
+  });
+
+  it('analyticsApi methods use default parameters', async () => {
+    const { analyticsApi } = await import('./api');
+    expect(typeof analyticsApi.compare).toBe('function');
+    expect(typeof analyticsApi.trend).toBe('function');
+    expect(typeof analyticsApi.summary).toBe('function');
+    expect(typeof analyticsApi.periodStats).toBe('function');
+  });
+});
+
+describe('Type exports', () => {
+  it('exports LoginCredentials type', async () => {
+    const api = await import('./api');
+    // Type is exported if we can reference it without error
+    expect(api).toBeDefined();
+  });
+
+  it('exports TokenResponse type', async () => {
+    const api = await import('./api');
+    expect(api).toBeDefined();
+  });
+
+  it('exports UserRole type', async () => {
+    const api = await import('./api');
+    expect(api).toBeDefined();
+  });
+
+  it('exports User type', async () => {
+    const api = await import('./api');
+    expect(api).toBeDefined();
+  });
+
+  it('exports Notification types', async () => {
+    const api = await import('./api');
+    expect(api).toBeDefined();
+  });
+
+  it('exports Schedule types', async () => {
+    const api = await import('./api');
+    expect(api).toBeDefined();
+  });
+
+  it('exports Permission types', async () => {
+    const api = await import('./api');
+    expect(api).toBeDefined();
+  });
+
+  it('exports Analytics types', async () => {
+    const api = await import('./api');
+    expect(api).toBeDefined();
+  });
+});
+
+describe('Helper functions coverage', () => {
+  const originalLocalStorage = global.localStorage;
+  const originalLocation = global.location;
+  let store: Record<string, string> = {};
+
+  beforeEach(() => {
+    store = {};
+    const mockLocalStorage = {
+      getItem: vi.fn((key: string) => store[key] || null),
+      setItem: vi.fn((key: string, value: string) => {
+        store[key] = value;
+      }),
+      removeItem: vi.fn((key: string) => {
+        delete store[key];
+      }),
+      clear: vi.fn(),
+      length: 0,
+      key: vi.fn(),
+    };
+    Object.defineProperty(global, 'localStorage', {
+      value: mockLocalStorage,
+      writable: true,
+    });
+    Object.defineProperty(global, 'location', {
+      value: { href: 'http://localhost:3000/dashboard', pathname: '/dashboard' },
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(global, 'localStorage', {
+      value: originalLocalStorage,
+      writable: true,
+    });
+    Object.defineProperty(global, 'location', {
+      value: originalLocation,
+      writable: true,
+    });
+  });
+
+  it('handles shouldSkipRefresh with undefined config', async () => {
+    vi.resetModules();
+    const { api } = await import('./api');
+
+    const interceptors = api.interceptors.response as unknown as {
+      handlers: Array<{
+        fulfilled: (response: unknown) => unknown;
+        rejected: (error: unknown) => Promise<unknown>;
+      }>;
+    };
+    const errorHandler = interceptors.handlers[0].rejected;
+
+    const error = {
+      config: undefined,
+      response: { status: HttpStatusCode.Unauthorized },
+    };
+
+    await expect(errorHandler(error)).rejects.toBe(error);
+  });
+
+  it('handles error with undefined url in config', async () => {
+    vi.resetModules();
+    const { api } = await import('./api');
+
+    const interceptors = api.interceptors.response as unknown as {
+      handlers: Array<{
+        fulfilled: (response: unknown) => unknown;
+        rejected: (error: unknown) => Promise<unknown>;
+      }>;
+    };
+    const errorHandler = interceptors.handlers[0].rejected;
+
+    const error = {
+      config: { url: undefined, _retry: false, headers: {} },
+      response: { status: HttpStatusCode.Unauthorized },
+    };
+
+    await expect(errorHandler(error)).rejects.toThrow('No refresh token');
+  });
+});

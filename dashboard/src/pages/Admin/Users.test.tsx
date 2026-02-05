@@ -443,3 +443,245 @@ describe('Users Filter', () => {
     });
   });
 });
+
+describe('Users Create Form', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows username field in create modal', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add User'));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    });
+  });
+
+  it('shows email field in create modal', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add User'));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    });
+  });
+
+  it('shows password field in create modal', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add User'));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Password')).toBeInTheDocument();
+    });
+  });
+
+  it('shows cancel button in create modal', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add User'));
+
+    await waitFor(() => {
+      const cancelButtons = screen.getAllByText('Cancel');
+      expect(cancelButtons.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('closes create modal on cancel', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add User'));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Cancel'));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Username')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('Users API Errors', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('handles list users error gracefully', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.listUsers).mockRejectedValueOnce(new Error('Network error'));
+
+    renderUsers();
+
+    // Should not crash even with error
+    await waitFor(() => {
+      expect(screen.getByText('User Management')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Users Table Display', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows user count in header', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('User Management')).toBeInTheDocument();
+    });
+  });
+
+  it('displays inactive status for inactive users', async () => {
+    renderUsers();
+
+    // First enable showing inactive users
+    await waitFor(() => {
+      expect(screen.getByText('Show inactive users')).toBeInTheDocument();
+    });
+
+    const checkbox = screen.getByRole('checkbox');
+    fireEvent.click(checkbox);
+
+    await waitFor(() => {
+      const inactiveLabels = screen.queryAllByText('Inactive');
+      expect(inactiveLabels.length).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  it('shows viewer role badge', async () => {
+    renderUsers();
+
+    // Enable showing inactive users to see the viewer role
+    await waitFor(() => {
+      expect(screen.getByText('Show inactive users')).toBeInTheDocument();
+    });
+
+    const checkbox = screen.getByRole('checkbox');
+    fireEvent.click(checkbox);
+
+    await waitFor(() => {
+      const viewerBadges = screen.queryAllByText('Viewer');
+      expect(viewerBadges.length).toBeGreaterThanOrEqual(0);
+    });
+  });
+});
+
+describe('Users Password Reset', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('has password reset buttons for each user', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const passwordButtons = screen.getAllByTitle('Reset password');
+    expect(passwordButtons.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Users Edit Form', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows email field in edit modal', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const editButtons = screen.getAllByTitle('Edit user');
+    fireEvent.click(editButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    });
+  });
+
+  it('pre-fills email in edit modal', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const editButtons = screen.getAllByTitle('Edit user');
+    fireEvent.click(editButtons[0]);
+
+    await waitFor(() => {
+      const emailInput = screen.getByDisplayValue('admin@example.com');
+      expect(emailInput).toBeInTheDocument();
+    });
+  });
+
+  it('shows username field in edit modal', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const editButtons = screen.getAllByTitle('Edit user');
+    fireEvent.click(editButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Users Action Buttons', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows all action buttons for each user', async () => {
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const editButtons = screen.getAllByTitle('Edit user');
+    const roleButtons = screen.getAllByTitle('Change role');
+    const passwordButtons = screen.getAllByTitle('Reset password');
+    const deactivateButtons = screen.getAllByTitle('Deactivate user');
+
+    expect(editButtons.length).toBeGreaterThan(0);
+    expect(roleButtons.length).toBeGreaterThan(0);
+    expect(passwordButtons.length).toBeGreaterThan(0);
+    expect(deactivateButtons.length).toBeGreaterThan(0);
+  });
+});

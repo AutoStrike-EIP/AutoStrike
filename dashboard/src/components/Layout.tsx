@@ -16,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import { useAuth } from '../contexts/AuthContext';
+import { UserRole } from '../lib/api';
 
 interface LayoutProps {
   readonly children: ReactNode;
@@ -25,8 +26,17 @@ interface NavItem {
   name: string;
   href: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  adminOnly?: boolean;
+  minRole?: UserRole; // Minimum role required to see this item
 }
+
+// Role hierarchy: admin(5) > rssi(4) > operator(3) > analyst(2) > viewer(1)
+const roleHierarchy: Record<UserRole, number> = {
+  admin: 5,
+  rssi: 4,
+  operator: 3,
+  analyst: 2,
+  viewer: 1,
+};
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
@@ -35,12 +45,18 @@ const navigation: NavItem[] = [
   { name: 'ATT&CK Matrix', href: '/matrix', icon: Squares2X2Icon },
   { name: 'Scenarios', href: '/scenarios', icon: DocumentTextIcon },
   { name: 'Executions', href: '/executions', icon: PlayIcon },
-  { name: 'Analytics', href: '/analytics', icon: ChartBarIcon },
-  { name: 'Scheduler', href: '/scheduler', icon: CalendarIcon },
-  { name: 'Users', href: '/admin/users', icon: UsersIcon, adminOnly: true },
-  { name: 'Permissions', href: '/admin/permissions', icon: ShieldCheckIcon, adminOnly: true },
-  { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
+  { name: 'Analytics', href: '/analytics', icon: ChartBarIcon, minRole: 'analyst' },
+  { name: 'Scheduler', href: '/scheduler', icon: CalendarIcon, minRole: 'analyst' },
+  { name: 'Users', href: '/admin/users', icon: UsersIcon, minRole: 'admin' },
+  { name: 'Permissions', href: '/admin/permissions', icon: ShieldCheckIcon, minRole: 'admin' },
+  { name: 'Settings', href: '/settings', icon: Cog6ToothIcon, minRole: 'admin' },
 ];
+
+function hasMinRole(userRole: UserRole | undefined, minRole?: UserRole): boolean {
+  if (!minRole) return true; // No minimum role required
+  if (!userRole) return false;
+  return roleHierarchy[userRole] >= roleHierarchy[minRole];
+}
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
@@ -61,7 +77,7 @@ export default function Layout({ children }: LayoutProps) {
 
         <nav className="flex-1 px-4 space-y-1">
           {navigation
-            .filter((item) => !item.adminOnly || user?.role === 'admin')
+            .filter((item) => !authEnabled || hasMinRole(user?.role as UserRole, item.minRole))
             .map((item) => {
               const isActive = location.pathname === item.href;
               return (

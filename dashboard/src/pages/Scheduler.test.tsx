@@ -811,3 +811,313 @@ describe('Scheduler Agent Selection', () => {
     });
   });
 });
+
+describe('Scheduler API Error Handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaultMocks();
+  });
+
+  it('handles pause error gracefully', async () => {
+    const toast = await import('react-hot-toast');
+    mockPause.mockRejectedValueOnce(new Error('Pause failed'));
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    const pauseButtons = screen.getAllByTitle('Pause');
+    fireEvent.click(pauseButtons[0]);
+
+    await waitFor(() => {
+      expect(toast.default.error).toHaveBeenCalled();
+    });
+  });
+
+  it('handles resume error gracefully', async () => {
+    const toast = await import('react-hot-toast');
+    mockResume.mockRejectedValueOnce(new Error('Resume failed'));
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Weekly Audit')).toBeInTheDocument();
+    });
+
+    const resumeButtons = screen.getAllByTitle('Resume');
+    fireEvent.click(resumeButtons[0]);
+
+    await waitFor(() => {
+      expect(toast.default.error).toHaveBeenCalled();
+    });
+  });
+
+  it('handles run now error gracefully', async () => {
+    const toast = await import('react-hot-toast');
+    mockRunNow.mockRejectedValueOnce(new Error('Run now failed'));
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    const runNowButtons = screen.getAllByTitle('Run Now');
+    fireEvent.click(runNowButtons[0]);
+
+    await waitFor(() => {
+      expect(toast.default.error).toHaveBeenCalled();
+    });
+  });
+
+  it('handles delete error gracefully', async () => {
+    const toast = await import('react-hot-toast');
+    mockDelete.mockRejectedValueOnce(new Error('Delete failed'));
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    const deleteButtons = screen.getAllByTitle('Delete');
+    fireEvent.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete Schedule')).toBeInTheDocument();
+    });
+
+    const allButtons = screen.getAllByRole('button');
+    const confirmButton = allButtons.find(
+      (btn) => btn.textContent === 'Delete' && btn.className.includes('bg-red-600')
+    );
+    fireEvent.click(confirmButton!);
+
+    await waitFor(() => {
+      expect(toast.default.error).toHaveBeenCalled();
+    });
+  });
+});
+
+describe('Scheduler Form Validation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaultMocks();
+  });
+
+  it('shows required fields with asterisks', async () => {
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Create Schedule'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Name *')).toBeInTheDocument();
+      expect(screen.getByText('Scenario *')).toBeInTheDocument();
+      expect(screen.getByText('Frequency *')).toBeInTheDocument();
+    });
+  });
+
+  it('shows description field as optional', async () => {
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Create Schedule'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Description')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Scheduler Loading State', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Don't setup mocks immediately to test loading state
+    mockScheduleList.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve({ data: mockScheduleData }), 100))
+    );
+    mockScenarioList.mockResolvedValue({ data: mockScenarioData });
+    mockGetRuns.mockResolvedValue({ data: [] });
+  });
+
+  it('shows scheduler title after loading', async () => {
+    renderScheduler();
+    await waitFor(() => {
+      expect(screen.getByText('Scheduler')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Scheduler Frequency Options', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaultMocks();
+  });
+
+  it('shows all frequency options in dropdown', async () => {
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Create Schedule'));
+
+    await waitFor(() => {
+      const frequencySelect = screen.getByLabelText('Frequency *');
+      expect(frequencySelect).toBeInTheDocument();
+    });
+  });
+
+  it('can select hourly frequency', async () => {
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Create Schedule'));
+
+    await waitFor(() => {
+      const frequencySelect = screen.getByLabelText('Frequency *');
+      fireEvent.change(frequencySelect, { target: { value: 'hourly' } });
+      expect(frequencySelect).toHaveValue('hourly');
+    });
+  });
+
+  it('can select monthly frequency', async () => {
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Create Schedule'));
+
+    await waitFor(() => {
+      const frequencySelect = screen.getByLabelText('Frequency *');
+      fireEvent.change(frequencySelect, { target: { value: 'monthly' } });
+      expect(frequencySelect).toHaveValue('monthly');
+    });
+  });
+});
+
+describe('Scheduler Schedule Card Details', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaultMocks();
+  });
+
+  it('shows schedule names', async () => {
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+      expect(screen.getByText('Weekly Audit')).toBeInTheDocument();
+    });
+  });
+
+  it('shows schedule descriptions', async () => {
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Run security tests daily')).toBeInTheDocument();
+      expect(screen.getByText('Weekly security audit')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Scheduler Modal Close', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaultMocks();
+  });
+
+  it('closes create modal when clicking outside', async () => {
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Create Schedule'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Name *')).toBeInTheDocument();
+    });
+
+    // Click cancel to close
+    fireEvent.click(screen.getByText('Cancel'));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Name *')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('Scheduler Success Messages', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaultMocks();
+  });
+
+  it('shows success toast on pause', async () => {
+    const toast = await import('react-hot-toast');
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    const pauseButtons = screen.getAllByTitle('Pause');
+    fireEvent.click(pauseButtons[0]);
+
+    await waitFor(() => {
+      expect(toast.default.success).toHaveBeenCalled();
+    });
+  });
+
+  it('shows success toast on resume', async () => {
+    const toast = await import('react-hot-toast');
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Weekly Audit')).toBeInTheDocument();
+    });
+
+    const resumeButtons = screen.getAllByTitle('Resume');
+    fireEvent.click(resumeButtons[0]);
+
+    await waitFor(() => {
+      expect(toast.default.success).toHaveBeenCalled();
+    });
+  });
+
+  it('shows success toast on run now', async () => {
+    const toast = await import('react-hot-toast');
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    const runNowButtons = screen.getAllByTitle('Run Now');
+    fireEvent.click(runNowButtons[0]);
+
+    await waitFor(() => {
+      expect(toast.default.success).toHaveBeenCalled();
+    });
+  });
+});

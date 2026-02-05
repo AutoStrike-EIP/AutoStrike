@@ -1039,3 +1039,214 @@ func TestErrInvalidCronExpr(t *testing.T) {
 		t.Errorf("ErrInvalidCronExpr = %q, want %q", ErrInvalidCronExpr.Error(), "invalid cron expression")
 	}
 }
+
+func TestScheduleService_StartStop_MultipleStartStop(t *testing.T) {
+	repo := newMockScheduleRepo()
+	logger := zap.NewNop()
+	service := NewScheduleService(repo, nil, logger)
+
+	// Start multiple times (should be idempotent)
+	service.Start()
+	service.Start()
+	service.Start()
+
+	// Stop multiple times (should be idempotent)
+	service.Stop()
+	service.Stop()
+	service.Stop()
+
+	// Start again after stop
+	service.Start()
+	service.Stop()
+}
+
+func TestScheduleService_StartStop_ConcurrentAccess(t *testing.T) {
+	repo := newMockScheduleRepo()
+	logger := zap.NewNop()
+	service := NewScheduleService(repo, nil, logger)
+
+	// Test rapid start/stop cycles sequentially to avoid race conditions
+	for i := 0; i < 5; i++ {
+		service.Start()
+		// Give scheduler time to start
+		time.Sleep(10 * time.Millisecond)
+		service.Stop()
+	}
+
+	// Final cleanup
+	service.Stop()
+}
+
+func TestScheduleService_Create_WeeklyFrequency(t *testing.T) {
+	repo := newMockScheduleRepo()
+	logger := zap.NewNop()
+	service := NewScheduleService(repo, nil, logger)
+
+	req := &CreateScheduleRequest{
+		Name:       "Weekly Schedule",
+		ScenarioID: "scenario-1",
+		Frequency:  entity.FrequencyWeekly,
+		SafeMode:   true,
+	}
+
+	schedule, err := service.Create(context.Background(), req, "user-1")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if schedule.Frequency != entity.FrequencyWeekly {
+		t.Errorf("Frequency = %q, want %q", schedule.Frequency, entity.FrequencyWeekly)
+	}
+	if schedule.NextRunAt == nil {
+		t.Error("NextRunAt should be set for weekly schedule")
+	}
+}
+
+func TestScheduleService_Create_MonthlyFrequency(t *testing.T) {
+	repo := newMockScheduleRepo()
+	logger := zap.NewNop()
+	service := NewScheduleService(repo, nil, logger)
+
+	req := &CreateScheduleRequest{
+		Name:       "Monthly Schedule",
+		ScenarioID: "scenario-1",
+		Frequency:  entity.FrequencyMonthly,
+		SafeMode:   false,
+	}
+
+	schedule, err := service.Create(context.Background(), req, "user-1")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if schedule.Frequency != entity.FrequencyMonthly {
+		t.Errorf("Frequency = %q, want %q", schedule.Frequency, entity.FrequencyMonthly)
+	}
+}
+
+func TestScheduleService_Create_OnceFrequency(t *testing.T) {
+	repo := newMockScheduleRepo()
+	logger := zap.NewNop()
+	service := NewScheduleService(repo, nil, logger)
+
+	futureTime := time.Now().Add(1 * time.Hour)
+	req := &CreateScheduleRequest{
+		Name:       "Once Schedule",
+		ScenarioID: "scenario-1",
+		Frequency:  entity.FrequencyOnce,
+		StartAt:    &futureTime,
+	}
+
+	schedule, err := service.Create(context.Background(), req, "user-1")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if schedule.Frequency != entity.FrequencyOnce {
+		t.Errorf("Frequency = %q, want %q", schedule.Frequency, entity.FrequencyOnce)
+	}
+}
+
+func TestScheduleService_Create_WithAgentPaw(t *testing.T) {
+	repo := newMockScheduleRepo()
+	logger := zap.NewNop()
+	service := NewScheduleService(repo, nil, logger)
+
+	req := &CreateScheduleRequest{
+		Name:       "Agent-specific Schedule",
+		ScenarioID: "scenario-1",
+		AgentPaw:   "agent-xyz-123",
+		Frequency:  entity.FrequencyDaily,
+		SafeMode:   true,
+	}
+
+	schedule, err := service.Create(context.Background(), req, "user-1")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if schedule.AgentPaw != "agent-xyz-123" {
+		t.Errorf("AgentPaw = %q, want %q", schedule.AgentPaw, "agent-xyz-123")
+	}
+}
+
+func TestScheduleService_Update_WithAgentPaw(t *testing.T) {
+	repo := newMockScheduleRepo()
+	logger := zap.NewNop()
+	service := NewScheduleService(repo, nil, logger)
+
+	repo.schedules["sched-1"] = &entity.Schedule{
+		ID:         "sched-1",
+		Name:       "Initial",
+		ScenarioID: "scenario-1",
+		AgentPaw:   "",
+		Frequency:  entity.FrequencyDaily,
+		Status:     entity.ScheduleStatusActive,
+	}
+
+	req := &CreateScheduleRequest{
+		Name:       "Updated",
+		ScenarioID: "scenario-1",
+		AgentPaw:   "new-agent",
+		Frequency:  entity.FrequencyDaily,
+	}
+
+	schedule, err := service.Update(context.Background(), "sched-1", req)
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	if schedule.AgentPaw != "new-agent" {
+		t.Errorf("AgentPaw = %q, want %q", schedule.AgentPaw, "new-agent")
+	}
+}
+
+func TestScheduleService_Create_EmptyDescription(t *testing.T) {
+	repo := newMockScheduleRepo()
+	logger := zap.NewNop()
+	service := NewScheduleService(repo, nil, logger)
+
+	req := &CreateScheduleRequest{
+		Name:        "No Description Schedule",
+		Description: "",
+		ScenarioID:  "scenario-1",
+		Frequency:   entity.FrequencyDaily,
+	}
+
+	schedule, err := service.Create(context.Background(), req, "user-1")
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if schedule.Description != "" {
+		t.Errorf("Description = %q, want empty", schedule.Description)
+	}
+}
+
+func TestScheduleService_Update_SafeModeChange(t *testing.T) {
+	repo := newMockScheduleRepo()
+	logger := zap.NewNop()
+	service := NewScheduleService(repo, nil, logger)
+
+	repo.schedules["sched-1"] = &entity.Schedule{
+		ID:       "sched-1",
+		SafeMode: true,
+		Status:   entity.ScheduleStatusActive,
+	}
+
+	req := &CreateScheduleRequest{
+		Name:       "Updated",
+		ScenarioID: "scenario-1",
+		Frequency:  entity.FrequencyDaily,
+		SafeMode:   false,
+	}
+
+	schedule, err := service.Update(context.Background(), "sched-1", req)
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	if schedule.SafeMode != false {
+		t.Errorf("SafeMode = %v, want false", schedule.SafeMode)
+	}
+}

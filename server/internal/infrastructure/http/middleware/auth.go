@@ -23,6 +23,17 @@ type AuthConfig struct {
 	AgentSecret string
 }
 
+// NoAuthMiddleware creates a middleware that sets default user context when auth is disabled
+// This allows handlers that check for user_id to work in development mode
+func NoAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Set default anonymous user with admin role for full access
+		c.Set("user_id", "anonymous")
+		c.Set("role", "admin")
+		c.Next()
+	}
+}
+
 // AuthMiddleware creates an authentication middleware
 func AuthMiddleware(config *AuthConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {

@@ -68,9 +68,9 @@ export default function Permissions() {
           <div className="flex items-center gap-4 mb-4">
             <span className="text-gray-600">Role:</span>
             <span
-              className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${ROLE_COLORS[user?.role || 'viewer']}`}
+              className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${ROLE_COLORS[(myPermissions.role as UserRole) || user?.role || 'viewer']}`}
             >
-              {ROLE_DISPLAY_NAMES[user?.role || 'viewer']}
+              {ROLE_DISPLAY_NAMES[(myPermissions.role as UserRole) || user?.role || 'viewer']}
             </span>
           </div>
           <div className="flex flex-wrap gap-2">

@@ -431,3 +431,191 @@ func (m *mockResultRepoForHandler) FindResultsByExecution(ctx context.Context, e
 func (m *mockResultRepoForHandler) FindResultsByTechnique(ctx context.Context, techniqueID string) ([]*entity.ExecutionResult, error) {
 	return nil, nil
 }
+
+// Tests for unauthenticated access
+func TestAnalyticsHandler_CompareScores_Unauthenticated(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/compare", handler.CompareScores)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/compare", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetScoreTrend_Unauthenticated(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/trend", handler.GetScoreTrend)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/trend", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetExecutionSummary_Unauthenticated(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/summary", handler.GetExecutionSummary)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/summary", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetPeriodStats_Unauthenticated(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/period", handler.GetPeriodStats)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/period?start=2025-01-01T00:00:00Z&end=2025-01-02T00:00:00Z", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetScoreTrend_InvalidDays(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/trend", withAuthAnalytics(handler.GetScoreTrend))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/trend?days=invalid", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetScoreTrend_DaysOutOfRange(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/trend", withAuthAnalytics(handler.GetScoreTrend))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/trend?days=1000", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetScoreTrend_NegativeDays(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/trend", withAuthAnalytics(handler.GetScoreTrend))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/trend?days=-5", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetExecutionSummary_WithDays(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/summary", withAuthAnalytics(handler.GetExecutionSummary))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/summary?days=7", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAnalyticsHandler_GetExecutionSummary_InvalidDays(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/summary", withAuthAnalytics(handler.GetExecutionSummary))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/summary?days=invalid", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_CompareScores_NegativeDays(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/compare", withAuthAnalytics(handler.CompareScores))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/compare?days=-10", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetExecutionSummary_DaysOutOfRange(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	service := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(service)
+
+	router := gin.New()
+	router.GET("/summary", withAuthAnalytics(handler.GetExecutionSummary))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/summary?days=500", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}

@@ -1,13 +1,19 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"autostrike/internal/application"
 	"autostrike/internal/domain/entity"
 
 	"github.com/gin-gonic/gin"
 )
+
+// allowedImportDirs is the whitelist of directories allowed for technique imports
+var allowedImportDirs = []string{"./configs", "configs", "./config", "config"}
 
 // TechniqueHandler handles technique-related HTTP requests
 type TechniqueHandler struct {
@@ -111,10 +117,37 @@ type ImportRequest struct {
 	Path string `json:"path" binding:"required"`
 }
 
+// validateImportPath checks that the path is within allowed directories to prevent path traversal
+func validateImportPath(requestPath string) error {
+	// Clean the path to resolve any ../ or ./ components
+	cleaned := filepath.Clean(requestPath)
+
+	// Reject paths with .. after cleaning
+	if strings.Contains(cleaned, "..") {
+		return errors.New("path traversal detected")
+	}
+
+	// Check the path starts with an allowed directory
+	for _, dir := range allowedImportDirs {
+		cleanDir := filepath.Clean(dir)
+		if strings.HasPrefix(cleaned, cleanDir+string(filepath.Separator)) || cleaned == cleanDir {
+			return nil
+		}
+	}
+
+	return errors.New("import path must be within the configs directory")
+}
+
 // ImportTechniques imports techniques from YAML file
 func (h *TechniqueHandler) ImportTechniques(c *gin.Context) {
 	var req ImportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate path to prevent path traversal attacks
+	if err := validateImportPath(req.Path); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

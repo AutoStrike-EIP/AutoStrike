@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"autostrike/internal/application"
 	"autostrike/internal/domain/entity"
@@ -106,7 +107,14 @@ func NewServerWithConfig(
 
 	router := gin.New()
 
+	// Only trust the loopback proxy - prevents X-Forwarded-For spoofing in rate limiter
+	_ = router.SetTrustedProxies([]string{"127.0.0.1", "::1"})
+
+	// Request body size limit (10 MB)
+	router.MaxMultipartMemory = 10 << 20
+
 	// Global middleware
+	router.Use(middleware.SecurityHeadersMiddleware())
 	router.Use(middleware.LoggingMiddleware(logger))
 	router.Use(middleware.RecoveryMiddleware(logger))
 
@@ -125,10 +133,18 @@ func NewServerWithConfig(
 		wsHandler.RegisterRoutes(router)
 	}
 
-	// Auth routes (public - no auth middleware required)
+	// Token blacklist for logout revocation
+	var tokenBlacklist *application.TokenBlacklist
+	if config.EnableAuth {
+		tokenBlacklist = application.NewTokenBlacklist()
+	}
+
+	// Auth routes (public - no auth middleware required, with rate limiting)
 	if services.Auth != nil {
-		authHandler := handlers.NewAuthHandler(services.Auth)
-		authHandler.RegisterRoutes(router)
+		loginLimiter := middleware.NewRateLimiter(5, 1*time.Minute)   // 5 attempts/min per IP
+		refreshLimiter := middleware.NewRateLimiter(10, 1*time.Minute) // 10 refreshes/min per IP
+		authHandler := handlers.NewAuthHandlerWithBlacklist(services.Auth, tokenBlacklist)
+		authHandler.RegisterRoutesWithRateLimit(router, loginLimiter, refreshLimiter)
 	}
 
 	// API v1 routes
@@ -137,8 +153,9 @@ func NewServerWithConfig(
 	// Apply authentication middleware if enabled
 	if config.EnableAuth && config.JWTSecret != "" {
 		authConfig := &middleware.AuthConfig{
-			JWTSecret:   config.JWTSecret,
-			AgentSecret: config.AgentSecret,
+			JWTSecret:      config.JWTSecret,
+			AgentSecret:    config.AgentSecret,
+			TokenBlacklist: tokenBlacklist,
 		}
 		api.Use(middleware.AuthMiddleware(authConfig))
 		logger.Info("Authentication middleware enabled for API routes")

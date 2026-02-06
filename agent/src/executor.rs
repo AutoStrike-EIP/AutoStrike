@@ -16,6 +16,9 @@ pub struct ExecutionResult {
     pub exit_code: Option<i32>,
 }
 
+/// Maximum output size in bytes (1 MB) to prevent memory exhaustion.
+const MAX_OUTPUT_SIZE: usize = 1_048_576;
+
 /// Executes commands using platform-specific shells.
 pub struct CommandExecutor;
 
@@ -56,10 +59,22 @@ impl CommandExecutor {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let combined = format!("{}{}", stdout, stderr);
+                let trimmed = combined.trim().to_string();
+
+                // Truncate output to prevent memory exhaustion on large results
+                // Use floor_char_boundary to avoid panic on multi-byte UTF-8 chars
+                let final_output = if trimmed.len() > MAX_OUTPUT_SIZE {
+                    let safe_boundary = find_char_boundary(&trimmed, MAX_OUTPUT_SIZE);
+                    let mut truncated = trimmed[..safe_boundary].to_string();
+                    truncated.push_str("\n... [output truncated]");
+                    truncated
+                } else {
+                    trimmed
+                };
 
                 ExecutionResult {
                     success: output.status.success(),
-                    output: combined.trim().to_string(),
+                    output: final_output,
                     exit_code: output.status.code(),
                 }
             }
@@ -120,6 +135,19 @@ impl Default for CommandExecutor {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Finds the largest valid UTF-8 char boundary at or before `max` bytes.
+/// Prevents panics when slicing multi-byte characters.
+fn find_char_boundary(s: &str, max: usize) -> usize {
+    if max >= s.len() {
+        return s.len();
+    }
+    let mut boundary = max;
+    while boundary > 0 && !s.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    boundary
 }
 
 #[cfg(test)]

@@ -117,20 +117,28 @@ type ImportRequest struct {
 	Path string `json:"path" binding:"required"`
 }
 
-// validateImportPath checks that the path is within allowed directories to prevent path traversal
+// validateImportPath checks that the path is within allowed directories to prevent path traversal.
+// Uses filepath.Abs and filepath.Rel for reliable containment checks instead of string matching.
 func validateImportPath(requestPath string) error {
-	// Clean the path to resolve any ../ or ./ components
-	cleaned := filepath.Clean(requestPath)
-
-	// Reject paths with .. after cleaning
-	if strings.Contains(cleaned, "..") {
-		return errors.New("path traversal detected")
+	// Resolve the request path to an absolute path
+	absPath, err := filepath.Abs(requestPath)
+	if err != nil {
+		return errors.New("invalid path")
 	}
 
-	// Check the path starts with an allowed directory
+	// Check against each allowed directory using filepath.Rel
 	for _, dir := range allowedImportDirs {
-		cleanDir := filepath.Clean(dir)
-		if strings.HasPrefix(cleaned, cleanDir+string(filepath.Separator)) || cleaned == cleanDir {
+		absDir, err := filepath.Abs(dir)
+		if err != nil {
+			continue
+		}
+		// filepath.Rel computes a relative path from absDir to absPath.
+		// If the result starts with "..", absPath is outside absDir.
+		rel, err := filepath.Rel(absDir, absPath)
+		if err != nil {
+			continue
+		}
+		if rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return nil
 		}
 	}

@@ -186,12 +186,11 @@ func TestAuthHandler_RegisterRoutes(t *testing.T) {
 	router := gin.New()
 	handler.RegisterRoutes(router)
 
-	// Check routes are registered
+	// Check public routes are registered (logout is no longer public)
 	routes := router.Routes()
 	expectedPaths := map[string]string{
 		"/api/v1/auth/login":   "POST",
 		"/api/v1/auth/refresh": "POST",
-		"/api/v1/auth/logout":  "POST",
 	}
 
 	for path, method := range expectedPaths {
@@ -204,6 +203,13 @@ func TestAuthHandler_RegisterRoutes(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("Route %s %s not found", method, path)
+		}
+	}
+
+	// Verify logout is NOT in public routes
+	for _, route := range routes {
+		if route.Path == "/api/v1/auth/logout" {
+			t.Error("Logout should not be in public routes")
 		}
 	}
 }
@@ -432,7 +438,10 @@ func TestAuthHandler_Logout(t *testing.T) {
 	handler := NewAuthHandler(service)
 
 	router := gin.New()
-	router.POST("/logout", handler.Logout)
+	router.POST("/logout", func(c *gin.Context) {
+		c.Set("user_id", "user-1") // Simulate auth middleware
+		handler.Logout(c)
+	})
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/logout", nil)
@@ -440,6 +449,23 @@ func TestAuthHandler_Logout(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAuthHandler_Logout_Unauthenticated(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.POST("/logout", handler.Logout)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/logout", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 for unauthenticated logout, got %d", w.Code)
 	}
 }
 
@@ -1007,7 +1033,10 @@ func TestAuthHandler_Logout_ResponseBody(t *testing.T) {
 	handler := NewAuthHandler(service)
 
 	router := gin.New()
-	router.POST("/logout", handler.Logout)
+	router.POST("/logout", func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		handler.Logout(c)
+	})
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/logout", nil)
@@ -1054,7 +1083,6 @@ func TestAuthHandler_RegisterRoutesWithRateLimit(t *testing.T) {
 	expectedPaths := map[string]string{
 		"/api/v1/auth/login":   "POST",
 		"/api/v1/auth/refresh": "POST",
-		"/api/v1/auth/logout":  "POST",
 	}
 
 	for path, method := range expectedPaths {
@@ -1069,6 +1097,38 @@ func TestAuthHandler_RegisterRoutesWithRateLimit(t *testing.T) {
 			t.Errorf("Route %s %s not found", method, path)
 		}
 	}
+
+	// Verify logout is NOT in public rate-limited routes
+	for _, route := range routes {
+		if route.Path == "/api/v1/auth/logout" {
+			t.Error("Logout should not be in public rate-limited routes")
+		}
+	}
+}
+
+func TestAuthHandler_RegisterLogoutRoute(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	bl := application.NewTokenBlacklist()
+	handler := NewAuthHandlerWithBlacklist(service, bl)
+
+	logoutLimiter := middleware.NewRateLimiter(10, time.Minute)
+
+	router := gin.New()
+	api := router.Group("/api/v1")
+	handler.RegisterLogoutRoute(api, logoutLimiter)
+
+	routes := router.Routes()
+	found := false
+	for _, route := range routes {
+		if route.Path == "/api/v1/auth/logout" && route.Method == "POST" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Route POST /api/v1/auth/logout not found")
+	}
 }
 
 func TestAuthHandler_Logout_WithBlacklist(t *testing.T) {
@@ -1078,7 +1138,7 @@ func TestAuthHandler_Logout_WithBlacklist(t *testing.T) {
 
 	handler := NewAuthHandlerWithBlacklist(service, bl)
 
-	// Create a valid JWT
+	// Create a valid JWT with future expiry
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  "user123",
 		"type": "access",
@@ -1087,7 +1147,10 @@ func TestAuthHandler_Logout_WithBlacklist(t *testing.T) {
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
 	router := gin.New()
-	router.POST("/logout", handler.Logout)
+	router.POST("/logout", func(c *gin.Context) {
+		c.Set("user_id", "user123") // Simulate auth middleware
+		handler.Logout(c)
+	})
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/logout", nil)
@@ -1111,12 +1174,16 @@ func TestAuthHandler_Logout_NoAuthHeader_WithBlacklist(t *testing.T) {
 	handler := NewAuthHandlerWithBlacklist(service, bl)
 
 	router := gin.New()
-	router.POST("/logout", handler.Logout)
+	router.POST("/logout", func(c *gin.Context) {
+		c.Set("user_id", "user-1") // Authenticated but no Bearer header
+		handler.Logout(c)
+	})
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/logout", nil)
 	router.ServeHTTP(w, req)
 
+	// Should succeed even without Bearer header (token just won't be revoked)
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
@@ -1130,7 +1197,10 @@ func TestAuthHandler_Logout_InvalidAuthHeader_WithBlacklist(t *testing.T) {
 	handler := NewAuthHandlerWithBlacklist(service, bl)
 
 	router := gin.New()
-	router.POST("/logout", handler.Logout)
+	router.POST("/logout", func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		handler.Logout(c)
+	})
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/logout", nil)
@@ -1150,7 +1220,10 @@ func TestAuthHandler_Logout_MalformedJWT_WithBlacklist(t *testing.T) {
 	handler := NewAuthHandlerWithBlacklist(service, bl)
 
 	router := gin.New()
-	router.POST("/logout", handler.Logout)
+	router.POST("/logout", func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		handler.Logout(c)
+	})
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/logout", nil)
@@ -1161,9 +1234,9 @@ func TestAuthHandler_Logout_MalformedJWT_WithBlacklist(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	// Malformed JWT still gets revoked with fallback 24h expiry
-	if !bl.IsRevoked("not-a-valid-jwt") {
-		t.Error("Expected malformed token to still be added to blacklist")
+	// Malformed JWT (not 3 parts) is NOT revoked — only valid JWTs with exp are blacklisted
+	if bl.IsRevoked("not-a-valid-jwt") {
+		t.Error("Expected malformed token to NOT be added to blacklist")
 	}
 }
 
@@ -1182,7 +1255,10 @@ func TestAuthHandler_Logout_TokenWithoutExp_WithBlacklist(t *testing.T) {
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
 	router := gin.New()
-	router.POST("/logout", handler.Logout)
+	router.POST("/logout", func(c *gin.Context) {
+		c.Set("user_id", "user123")
+		handler.Logout(c)
+	})
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/logout", nil)
@@ -1193,7 +1269,8 @@ func TestAuthHandler_Logout_TokenWithoutExp_WithBlacklist(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	if !bl.IsRevoked(tokenString) {
-		t.Error("Expected token without exp to be revoked with fallback expiry")
+	// Token without exp claim is NOT revoked — getValidTokenExpiry returns false
+	if bl.IsRevoked(tokenString) {
+		t.Error("Expected token without exp to NOT be revoked")
 	}
 }

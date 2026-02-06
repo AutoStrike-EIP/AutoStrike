@@ -1,15 +1,24 @@
 package application
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"sync"
 	"time"
 )
 
 // TokenBlacklist maintains a set of revoked JWT tokens in memory.
-// Tokens are automatically cleaned up after they would have expired.
+// Tokens are stored as SHA-256 hashes to prevent attacker-controlled strings
+// from being used as map keys and to reduce memory usage.
 type TokenBlacklist struct {
 	mu     sync.RWMutex
-	tokens map[string]time.Time // token -> expiry time
+	tokens map[string]time.Time // hash(token) -> expiry time
+}
+
+// hashToken returns the SHA-256 hex digest of a token string.
+func hashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
 }
 
 // NewTokenBlacklist creates a new token blacklist with background cleanup.
@@ -22,17 +31,18 @@ func NewTokenBlacklist() *TokenBlacklist {
 }
 
 // Revoke adds a token to the blacklist until its expiry time.
+// The token is stored as a SHA-256 hash.
 func (bl *TokenBlacklist) Revoke(token string, expiresAt time.Time) {
 	bl.mu.Lock()
 	defer bl.mu.Unlock()
-	bl.tokens[token] = expiresAt
+	bl.tokens[hashToken(token)] = expiresAt
 }
 
 // IsRevoked checks if a token has been revoked and is still within its expiry window.
 func (bl *TokenBlacklist) IsRevoked(token string) bool {
 	bl.mu.RLock()
 	defer bl.mu.RUnlock()
-	expiresAt, exists := bl.tokens[token]
+	expiresAt, exists := bl.tokens[hashToken(token)]
 	if !exists {
 		return false
 	}

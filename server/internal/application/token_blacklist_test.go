@@ -23,11 +23,11 @@ func TestTokenBlacklist_Revoke(t *testing.T) {
 	bl.Revoke("token1", expiry)
 
 	bl.mu.RLock()
-	storedExpiry, exists := bl.tokens["token1"]
+	storedExpiry, exists := bl.tokens[hashToken("token1")]
 	bl.mu.RUnlock()
 
 	if !exists {
-		t.Fatal("Expected token to exist in blacklist")
+		t.Fatal("Expected token hash to exist in blacklist")
 	}
 	if !storedExpiry.Equal(expiry) {
 		t.Errorf("Expected expiry %v, got %v", expiry, storedExpiry)
@@ -42,7 +42,7 @@ func TestTokenBlacklist_Revoke_OverwritesExisting(t *testing.T) {
 	bl.Revoke("token1", newExpiry)
 
 	bl.mu.RLock()
-	storedExpiry := bl.tokens["token1"]
+	storedExpiry := bl.tokens[hashToken("token1")]
 	bl.mu.RUnlock()
 
 	if !storedExpiry.Equal(newExpiry) {
@@ -71,8 +71,8 @@ func TestTokenBlacklist_IsRevoked_ActiveToken(t *testing.T) {
 func TestTokenBlacklist_IsRevoked_ExpiredToken(t *testing.T) {
 	bl := &TokenBlacklist{tokens: make(map[string]time.Time)}
 
-	// Token that expired in the past
-	bl.tokens["token1"] = time.Now().Add(-time.Hour)
+	// Token that expired in the past - store using hash
+	bl.tokens[hashToken("token1")] = time.Now().Add(-time.Hour)
 
 	if bl.IsRevoked("token1") {
 		t.Error("Expected expired token to not be considered revoked")
@@ -82,23 +82,23 @@ func TestTokenBlacklist_IsRevoked_ExpiredToken(t *testing.T) {
 func TestTokenBlacklist_Cleanup(t *testing.T) {
 	bl := &TokenBlacklist{tokens: make(map[string]time.Time)}
 
-	// Add expired and active tokens
-	bl.tokens["expired1"] = time.Now().Add(-time.Hour)
-	bl.tokens["expired2"] = time.Now().Add(-2 * time.Hour)
-	bl.tokens["active1"] = time.Now().Add(time.Hour)
+	// Add expired and active tokens using hashed keys (as Revoke does)
+	bl.tokens[hashToken("expired1")] = time.Now().Add(-time.Hour)
+	bl.tokens[hashToken("expired2")] = time.Now().Add(-2 * time.Hour)
+	bl.tokens[hashToken("active1")] = time.Now().Add(time.Hour)
 
 	bl.cleanup()
 
 	bl.mu.RLock()
 	defer bl.mu.RUnlock()
 
-	if _, exists := bl.tokens["expired1"]; exists {
+	if _, exists := bl.tokens[hashToken("expired1")]; exists {
 		t.Error("Expected expired1 to be cleaned up")
 	}
-	if _, exists := bl.tokens["expired2"]; exists {
+	if _, exists := bl.tokens[hashToken("expired2")]; exists {
 		t.Error("Expected expired2 to be cleaned up")
 	}
-	if _, exists := bl.tokens["active1"]; !exists {
+	if _, exists := bl.tokens[hashToken("active1")]; !exists {
 		t.Error("Expected active1 to remain")
 	}
 }

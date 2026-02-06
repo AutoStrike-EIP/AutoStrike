@@ -2,8 +2,8 @@
 
 use std::process::Stdio;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
-use tokio::time::timeout;
 use tracing::{debug, error};
 
 /// Result of a command execution.
@@ -29,6 +29,7 @@ impl CommandExecutor {
     }
 
     /// Executes a command with the specified executor and timeout.
+    /// On timeout, the child process is actively killed.
     pub async fn execute(
         &self,
         executor_type: &str,
@@ -37,52 +38,105 @@ impl CommandExecutor {
     ) -> ExecutionResult {
         debug!("Executing command with {}: {}", executor_type, command);
 
-        let result = timeout(time_limit, self.run_command(executor_type, command)).await;
-
-        match result {
-            Ok(exec_result) => exec_result,
-            Err(_) => ExecutionResult {
-                success: false,
-                output: "Command timed out".to_string(),
-                exit_code: None,
-            },
-        }
-    }
-
-    async fn run_command(&self, executor_type: &str, command: &str) -> ExecutionResult {
         let mut cmd = self.build_command(executor_type, command);
-
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-        match cmd.output().await {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let combined = format!("{}{}", stdout, stderr);
-                let trimmed = combined.trim().to_string();
-
-                // Truncate output to prevent memory exhaustion on large results
-                // Use floor_char_boundary to avoid panic on multi-byte UTF-8 chars
-                let final_output = if trimmed.len() > MAX_OUTPUT_SIZE {
-                    let safe_boundary = find_char_boundary(&trimmed, MAX_OUTPUT_SIZE);
-                    let mut truncated = trimmed[..safe_boundary].to_string();
-                    truncated.push_str("\n... [output truncated]");
-                    truncated
-                } else {
-                    trimmed
-                };
-
-                ExecutionResult {
-                    success: output.status.success(),
-                    output: final_output,
-                    exit_code: output.status.code(),
-                }
-            }
+        let mut child = match cmd.spawn() {
+            Ok(child) => child,
             Err(e) => {
-                error!("Command execution failed: {}", e);
-                ExecutionResult {
+                error!("Failed to spawn command: {}", e);
+                return ExecutionResult {
                     success: false,
                     output: format!("Execution error: {}", e),
+                    exit_code: None,
+                };
+            }
+        };
+
+        // Take ownership of stdout/stderr for streaming reads
+        let mut stdout = child.stdout.take().expect("stdout piped");
+        let mut stderr = child.stderr.take().expect("stderr piped");
+
+        // Stream stdout and stderr with a hard byte cap
+        let read_output = async {
+            let mut stdout_buf = vec![0u8; 0];
+            let mut stderr_buf = vec![0u8; 0];
+            let mut total = 0usize;
+            let mut chunk = [0u8; 8192];
+
+            // Read stdout up to MAX_OUTPUT_SIZE
+            loop {
+                match stdout.read(&mut chunk).await {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let take = n.min(MAX_OUTPUT_SIZE.saturating_sub(total));
+                        stdout_buf.extend_from_slice(&chunk[..take]);
+                        total += take;
+                        if total >= MAX_OUTPUT_SIZE {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            // Read stderr with remaining budget
+            loop {
+                match stderr.read(&mut chunk).await {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let take = n.min(MAX_OUTPUT_SIZE.saturating_sub(total));
+                        stderr_buf.extend_from_slice(&chunk[..take]);
+                        total += take;
+                        if total >= MAX_OUTPUT_SIZE {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            let truncated = total >= MAX_OUTPUT_SIZE;
+            let stdout_str = String::from_utf8_lossy(&stdout_buf);
+            let stderr_str = String::from_utf8_lossy(&stderr_buf);
+            let combined = format!("{}{}", stdout_str, stderr_str);
+            let mut output = combined.trim().to_string();
+            if truncated {
+                // Safe UTF-8 truncation
+                let safe_boundary = find_char_boundary(&output, MAX_OUTPUT_SIZE);
+                output.truncate(safe_boundary);
+                output.push_str("\n... [output truncated]");
+            }
+            (output, truncated)
+        };
+
+        // Race output collection against timeout, kill child on timeout
+        tokio::select! {
+            (output, _truncated) = read_output => {
+                // Output collected, now wait for child to exit
+                match child.wait().await {
+                    Ok(status) => ExecutionResult {
+                        success: status.success(),
+                        output,
+                        exit_code: status.code(),
+                    },
+                    Err(e) => {
+                        error!("Failed to wait for child: {}", e);
+                        ExecutionResult {
+                            success: false,
+                            output,
+                            exit_code: None,
+                        }
+                    }
+                }
+            }
+            _ = tokio::time::sleep(time_limit) => {
+                // Timeout: kill the child process
+                let _ = child.kill().await;
+                let _ = child.wait().await; // Reap the zombie
+                ExecutionResult {
+                    success: false,
+                    output: "Command timed out".to_string(),
                     exit_code: None,
                 }
             }

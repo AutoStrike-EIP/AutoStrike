@@ -166,7 +166,7 @@ func NewServerWithConfig(
 	}
 
 	// Register routes with permission middleware
-	registerRoutesWithPermissions(api, services, hub, logger)
+	registerRoutesWithPermissions(api, services, hub, logger, tokenBlacklist)
 
 	// Serve dashboard static files if path is configured
 	if config.DashboardPath != "" {
@@ -215,15 +215,19 @@ func setupDashboardRoutes(router *gin.Engine, dashboardPath string, logger *zap.
 }
 
 // registerRoutesWithPermissions registers all API routes with appropriate permission middleware
-func registerRoutesWithPermissions(api *gin.RouterGroup, services *Services, hub *websocket.Hub, logger *zap.Logger) {
+func registerRoutesWithPermissions(api *gin.RouterGroup, services *Services, hub *websocket.Hub, logger *zap.Logger, tokenBlacklist *application.TokenBlacklist) {
 	// Helper to create permission middleware
 	perm := middleware.PermissionMiddleware
 	adminOnly := middleware.RoleMiddleware("admin")
 
-	// Auth protected routes (GET /auth/me)
+	// Auth protected routes (GET /auth/me, POST /auth/logout)
 	if services.Auth != nil {
-		authHandler := handlers.NewAuthHandler(services.Auth)
+		authHandler := handlers.NewAuthHandlerWithBlacklist(services.Auth, tokenBlacklist)
 		authHandler.RegisterProtectedRoutes(api)
+
+		// Logout requires authentication + rate limiting to prevent blacklist abuse
+		logoutLimiter := middleware.NewRateLimiter(10, 1*time.Minute)
+		authHandler.RegisterLogoutRoute(api, logoutLimiter)
 
 		// Admin routes (requires admin role)
 		adminHandler := handlers.NewAdminHandler(services.Auth)

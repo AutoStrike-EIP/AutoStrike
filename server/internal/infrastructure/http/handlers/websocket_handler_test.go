@@ -608,10 +608,10 @@ func TestUpgrader_CheckOrigin(t *testing.T) {
 func TestGetAllowedOrigins_Default(t *testing.T) {
 	// Clear ALLOWED_ORIGINS to test default behavior
 	originalValue := os.Getenv("ALLOWED_ORIGINS")
-	os.Unsetenv("ALLOWED_ORIGINS")
+	_ = os.Unsetenv("ALLOWED_ORIGINS")
 	defer func() {
 		if originalValue != "" {
-			os.Setenv("ALLOWED_ORIGINS", originalValue)
+			_ = os.Setenv("ALLOWED_ORIGINS", originalValue)
 		}
 	}()
 

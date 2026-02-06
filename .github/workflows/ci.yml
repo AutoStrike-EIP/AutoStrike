@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: '1.21'
+  GO_VERSION: '1.24'
   NODE_VERSION: '20'
   RUST_VERSION: 'stable'
 
@@ -30,24 +30,26 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('server/go.sum') }}
+          cache-dependency-path: server/go.sum
 
       - name: Install dependencies
         run: go mod download
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v7
         with:
           working-directory: server
           args: --timeout=5m
 
       - name: Test
         run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: server/coverage.out
 
       - name: Build
         run: go build -o autostrike-server ./cmd/autostrike
@@ -80,6 +82,13 @@ jobs:
 
       - name: Test
         run: npm run test -- --coverage
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: dashboard/coverage/
 
       - name: Build
         run: npm run build
@@ -130,11 +139,19 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: agent
+
+      - name: Lint
+        run: cargo clippy -- -D warnings
+
+      - name: Test
+        run: cargo test --verbose
 
       - name: Build
         run: cargo build --release
@@ -144,3 +161,19 @@ jobs:
         with:
           name: agent-windows
           path: agent/target/release/autostrike-agent.exe
+
+  # ===== DOCKER BUILD =====
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build server image
+        run: docker build -t autostrike-server ./server
+
+      - name: Build dashboard image
+        run: docker build -t autostrike-dashboard ./dashboard
+
+      - name: Docker Compose config check
+        run: JWT_SECRET=ci AGENT_SECRET=ci docker compose config --quiet

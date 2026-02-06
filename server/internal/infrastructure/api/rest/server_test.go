@@ -121,9 +121,9 @@ func (m *mockResultRepo) FindCompletedExecutionsByDateRange(ctx context.Context,
 
 func TestNewServerConfig_Default(t *testing.T) {
 	// Clear environment variables
-	os.Unsetenv("JWT_SECRET")
-	os.Unsetenv("AGENT_SECRET")
-	os.Unsetenv("ENABLE_AUTH")
+	_ = os.Unsetenv("JWT_SECRET")
+	_ = os.Unsetenv("AGENT_SECRET")
+	_ = os.Unsetenv("ENABLE_AUTH")
 
 	config := NewServerConfig()
 
@@ -140,9 +140,9 @@ func TestNewServerConfig_Default(t *testing.T) {
 }
 
 func TestNewServerConfig_EnabledWithSecret(t *testing.T) {
-	os.Setenv("JWT_SECRET", "my-secret-key")
-	os.Unsetenv("ENABLE_AUTH")
-	defer os.Unsetenv("JWT_SECRET")
+	_ = os.Setenv("JWT_SECRET", "my-secret-key")
+	_ = os.Unsetenv("ENABLE_AUTH")
+	defer func() { _ = os.Unsetenv("JWT_SECRET") }()
 
 	config := NewServerConfig()
 
@@ -153,13 +153,13 @@ func TestNewServerConfig_EnabledWithSecret(t *testing.T) {
 }
 
 func TestNewServerConfig_WithEnv(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-jwt-secret")
-	os.Setenv("AGENT_SECRET", "test-agent-secret")
-	os.Setenv("ENABLE_AUTH", "true")
+	_ = os.Setenv("JWT_SECRET", "test-jwt-secret")
+	_ = os.Setenv("AGENT_SECRET", "test-agent-secret")
+	_ = os.Setenv("ENABLE_AUTH", "true")
 	defer func() {
-		os.Unsetenv("JWT_SECRET")
-		os.Unsetenv("AGENT_SECRET")
-		os.Unsetenv("ENABLE_AUTH")
+		_ = os.Unsetenv("JWT_SECRET")
+		_ = os.Unsetenv("AGENT_SECRET")
+		_ = os.Unsetenv("ENABLE_AUTH")
 	}()
 
 	config := NewServerConfig()

@@ -59,9 +59,10 @@ func NewServerConfig() *ServerConfig {
 	enableAuth := jwtSecret != ""
 
 	// Allow explicit override via ENABLE_AUTH
-	if enableAuthEnv == "true" {
+	switch enableAuthEnv {
+	case "true":
 		enableAuth = true
-	} else if enableAuthEnv == "false" {
+	case "false":
 		enableAuth = false
 	}
 

@@ -1376,20 +1376,24 @@ func fakeSMTPServer(t *testing.T) (string, <-chan string) {
 	dataCh := make(chan string, 1)
 
 	go func() {
-		defer ln.Close()
+		defer ln.Close() //nolint:errcheck
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 
 		writer := bufio.NewWriter(conn)
 		reader := bufio.NewReader(conn)
 
+		reply := func(msg string) {
+			_, _ = fmt.Fprintf(writer, "%s\r\n", msg)
+			_ = writer.Flush()
+		}
+
 		// SMTP greeting
-		fmt.Fprintf(writer, "220 localhost SMTP\r\n")
-		writer.Flush()
+		reply("220 localhost SMTP")
 
 		var dataBody strings.Builder
 		inData := false
@@ -1403,8 +1407,7 @@ func fakeSMTPServer(t *testing.T) (string, <-chan string) {
 
 			if inData {
 				if line == "." {
-					fmt.Fprintf(writer, "250 OK\r\n")
-					writer.Flush()
+					reply("250 OK")
 					inData = false
 					dataCh <- dataBody.String()
 					continue
@@ -1413,30 +1416,22 @@ func fakeSMTPServer(t *testing.T) (string, <-chan string) {
 				continue
 			}
 
+			cmd := strings.ToUpper(line)
 			switch {
-			case strings.HasPrefix(strings.ToUpper(line), "EHLO"), strings.HasPrefix(strings.ToUpper(line), "HELO"):
-				fmt.Fprintf(writer, "250-localhost\r\n250 AUTH PLAIN LOGIN\r\n")
-				writer.Flush()
-			case strings.HasPrefix(strings.ToUpper(line), "AUTH"):
-				fmt.Fprintf(writer, "235 OK\r\n")
-				writer.Flush()
-			case strings.HasPrefix(strings.ToUpper(line), "MAIL FROM"):
-				fmt.Fprintf(writer, "250 OK\r\n")
-				writer.Flush()
-			case strings.HasPrefix(strings.ToUpper(line), "RCPT TO"):
-				fmt.Fprintf(writer, "250 OK\r\n")
-				writer.Flush()
-			case strings.HasPrefix(strings.ToUpper(line), "DATA"):
-				fmt.Fprintf(writer, "354 Start\r\n")
-				writer.Flush()
+			case strings.HasPrefix(cmd, "EHLO"), strings.HasPrefix(cmd, "HELO"):
+				reply("250-localhost\r\n250 AUTH PLAIN LOGIN")
+			case strings.HasPrefix(cmd, "AUTH"):
+				reply("235 OK")
+			case strings.HasPrefix(cmd, "MAIL FROM"), strings.HasPrefix(cmd, "RCPT TO"):
+				reply("250 OK")
+			case strings.HasPrefix(cmd, "DATA"):
+				reply("354 Start")
 				inData = true
-			case strings.HasPrefix(strings.ToUpper(line), "QUIT"):
-				fmt.Fprintf(writer, "221 Bye\r\n")
-				writer.Flush()
+			case strings.HasPrefix(cmd, "QUIT"):
+				reply("221 Bye")
 				return
 			default:
-				fmt.Fprintf(writer, "250 OK\r\n")
-				writer.Flush()
+				reply("250 OK")
 			}
 		}
 	}()

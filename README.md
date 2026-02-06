@@ -1,5 +1,8 @@
 # AutoStrike
 
+[![CI Pipeline](https://github.com/AutoStrike-EIP/AutoStrike_POC/actions/workflows/ci.yml/badge.svg)](https://github.com/AutoStrike-EIP/AutoStrike_POC/actions/workflows/ci.yml)
+[![SonarCloud](https://github.com/AutoStrike-EIP/AutoStrike_POC/actions/workflows/sonar.yml/badge.svg)](https://github.com/AutoStrike-EIP/AutoStrike_POC/actions/workflows/sonar.yml)
+
 **Plateforme de Breach and Attack Simulation (BAS) basée sur MITRE ATT&CK**
 
 > Projet EIP EPITECH - Promotion 2028
@@ -54,7 +57,7 @@ AutoStrike est une plateforme open-source de validation continue des défenses d
 | Composant | Technologie |
 |-----------|-------------|
 | Frontend | React 18, TypeScript, TailwindCSS, TanStack Query |
-| Backend | Go 1.21+, Gin, gorilla/websocket, SQLite |
+| Backend | Go 1.24+, Gin, gorilla/websocket, SQLite |
 | Agent | Rust 1.75+, tokio, tokio-tungstenite |
 | Communication | WebSocket (TLS), REST API |
 
@@ -110,9 +113,9 @@ Ouvrir **https://localhost:8443** (accepter le certificat auto-signé)
 make test
 
 # Par composant
-cd server && go test ./...      # 85%+ coverage
+cd server && go test ./...      # 95%+ coverage
 cd agent && cargo test          # 67 tests
-cd dashboard && npm test        # 513 tests
+cd dashboard && npm test        # 768 tests
 ```
 
 ## Documentation

@@ -411,13 +411,13 @@ func (s *NotificationService) sendEmailTLS(addr, to string, auth smtp.Auth, msg 
 	if err != nil {
 		return fmt.Errorf("failed to connect to SMTP server: %w", err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
 	client, err := smtp.NewClient(conn, s.smtpConfig.Host)
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
-	defer client.Close()
+	defer client.Close() //nolint:errcheck
 
 	if auth != nil {
 		if err := client.Auth(auth); err != nil {

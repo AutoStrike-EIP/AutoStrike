@@ -759,6 +759,12 @@ func TestNewRateLimiter(t *testing.T) {
 	}
 }
 
+func TestRateLimiter_Close_Idempotent(t *testing.T) {
+	rl := NewRateLimiter(5, time.Minute)
+	rl.Close()
+	rl.Close() // must not panic
+}
+
 func TestRateLimiter_Allow_WithinLimit(t *testing.T) {
 	rl := &RateLimiter{
 		ips:    make(map[string]*ipEntry),

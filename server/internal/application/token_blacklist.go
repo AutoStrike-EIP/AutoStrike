@@ -11,9 +11,10 @@ import (
 // Tokens are stored as SHA-256 hashes to prevent attacker-controlled strings
 // from being used as map keys and to reduce memory usage.
 type TokenBlacklist struct {
-	mu     sync.RWMutex
-	tokens map[string]time.Time // hash(token) -> expiry time
-	stopCh chan struct{}
+	mu        sync.RWMutex
+	tokens    map[string]time.Time // hash(token) -> expiry time
+	stopCh    chan struct{}
+	closeOnce sync.Once
 }
 
 // hashToken returns the SHA-256 hex digest of a token string.
@@ -32,9 +33,11 @@ func NewTokenBlacklist() *TokenBlacklist {
 	return bl
 }
 
-// Close stops the background cleanup goroutine.
+// Close stops the background cleanup goroutine. Safe to call multiple times.
 func (bl *TokenBlacklist) Close() {
-	close(bl.stopCh)
+	bl.closeOnce.Do(func() {
+		close(bl.stopCh)
+	})
 }
 
 // Revoke adds a token to the blacklist until its expiry time.

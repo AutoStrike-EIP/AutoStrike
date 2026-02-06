@@ -109,6 +109,12 @@ func TestTokenBlacklist_Cleanup_EmptyMap(t *testing.T) {
 	bl.cleanup() // Should not panic
 }
 
+func TestTokenBlacklist_Close_Idempotent(t *testing.T) {
+	bl := NewTokenBlacklist()
+	bl.Close()
+	bl.Close() // must not panic
+}
+
 func TestTokenBlacklist_ConcurrentAccess(t *testing.T) {
 	bl := NewTokenBlacklist()
 	defer bl.Close()

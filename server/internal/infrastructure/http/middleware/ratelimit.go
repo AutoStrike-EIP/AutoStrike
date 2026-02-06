@@ -16,11 +16,12 @@ type ipEntry struct {
 
 // RateLimiter implements per-IP rate limiting
 type RateLimiter struct {
-	mu       sync.Mutex
-	ips      map[string]*ipEntry
-	limit    int
-	window   time.Duration
-	stopCh   chan struct{}
+	mu        sync.Mutex
+	ips       map[string]*ipEntry
+	limit     int
+	window    time.Duration
+	stopCh    chan struct{}
+	closeOnce sync.Once
 }
 
 // NewRateLimiter creates a rate limiter that allows `limit` requests per `window` per IP
@@ -49,9 +50,11 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 	return rl
 }
 
-// Close stops the background cleanup goroutine.
+// Close stops the background cleanup goroutine. Safe to call multiple times.
 func (rl *RateLimiter) Close() {
-	close(rl.stopCh)
+	rl.closeOnce.Do(func() {
+		close(rl.stopCh)
+	})
 }
 
 // cleanup removes expired entries

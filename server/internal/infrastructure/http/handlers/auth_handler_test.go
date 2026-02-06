@@ -1240,6 +1240,127 @@ func TestAuthHandler_Logout_MalformedJWT_WithBlacklist(t *testing.T) {
 	}
 }
 
+func TestAuthHandler_Logout_ExpiredToken_WithBlacklist(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	bl := application.NewTokenBlacklist()
+
+	handler := NewAuthHandlerWithBlacklist(service, bl)
+
+	// Create a JWT with an expiry in the past (already expired)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  "user123",
+		"type": "access",
+		"exp":  time.Now().Add(-time.Hour).Unix(), // expired 1 hour ago
+	})
+	tokenString, _ := token.SignedString([]byte("test-secret"))
+
+	router := gin.New()
+	router.POST("/logout", func(c *gin.Context) {
+		c.Set("user_id", "user123")
+		handler.Logout(c)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/logout", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Already-expired token should NOT be added to the blacklist
+	if bl.IsRevoked(tokenString) {
+		t.Error("Expected already-expired token to NOT be revoked")
+	}
+}
+
+func TestAuthHandler_Logout_InvalidBase64Payload_WithBlacklist(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	bl := application.NewTokenBlacklist()
+
+	handler := NewAuthHandlerWithBlacklist(service, bl)
+
+	// Construct a token-like string with 3 parts but invalid base64 in the payload
+	tokenString := "eyJhbGciOiJIUzI1NiJ9.!!!invalid-base64!!!.signature"
+
+	router := gin.New()
+	router.POST("/logout", func(c *gin.Context) {
+		c.Set("user_id", "user123")
+		handler.Logout(c)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/logout", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Token with invalid base64 payload should NOT be revoked
+	if bl.IsRevoked(tokenString) {
+		t.Error("Expected token with invalid base64 payload to NOT be revoked")
+	}
+}
+
+func TestGetValidTokenExpiry_InvalidBase64(t *testing.T) {
+	// Test getValidTokenExpiry directly with invalid base64 in payload
+	tokenString := "header.!!!not-valid-base64!!!.signature"
+	_, valid := getValidTokenExpiry(tokenString)
+	if valid {
+		t.Error("Expected getValidTokenExpiry to return false for invalid base64 payload")
+	}
+}
+
+func TestGetValidTokenExpiry_InvalidJSON(t *testing.T) {
+	// Test getValidTokenExpiry directly with valid base64 but not JSON
+	// "not json" base64-encoded = "bm90IGpzb24"
+	tokenString := "header.bm90IGpzb24.signature"
+	_, valid := getValidTokenExpiry(tokenString)
+	if valid {
+		t.Error("Expected getValidTokenExpiry to return false for non-JSON payload")
+	}
+}
+
+func TestGetValidTokenExpiry_MissingExpClaim(t *testing.T) {
+	// Test getValidTokenExpiry directly with valid JSON but no exp
+	// {"sub":"user123"} base64url-encoded
+	tokenString := "header.eyJzdWIiOiJ1c2VyMTIzIn0.signature"
+	_, valid := getValidTokenExpiry(tokenString)
+	if valid {
+		t.Error("Expected getValidTokenExpiry to return false for missing exp claim")
+	}
+}
+
+func TestGetValidTokenExpiry_ValidToken(t *testing.T) {
+	// Create a real JWT to test the happy path
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": "user123",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	tokenString, _ := token.SignedString([]byte("test-secret"))
+
+	expiry, valid := getValidTokenExpiry(tokenString)
+	if !valid {
+		t.Error("Expected getValidTokenExpiry to return true for valid token")
+	}
+	if expiry.IsZero() {
+		t.Error("Expected non-zero expiry time")
+	}
+}
+
+func TestGetValidTokenExpiry_TooFewParts(t *testing.T) {
+	// Test with only 2 parts instead of 3
+	_, valid := getValidTokenExpiry("header.payload")
+	if valid {
+		t.Error("Expected getValidTokenExpiry to return false for 2-part token")
+	}
+}
+
 func TestAuthHandler_Logout_TokenWithoutExp_WithBlacklist(t *testing.T) {
 	repo := newMockUserRepo()
 	service := application.NewAuthService(repo, "test-secret")

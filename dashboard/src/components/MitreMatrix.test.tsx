@@ -369,4 +369,38 @@ describe('MitreMatrix', () => {
     // Detection section should not be visible when detection array is empty
     expect(screen.queryByText('Detection')).not.toBeInTheDocument();
   });
+
+  it('filters out techniques for a platform that only some techniques support', () => {
+    render(<MitreMatrix techniques={mockTechniques} />);
+
+    const platformSelect = screen.getByRole('combobox');
+
+    // Filter by macos - only T1566 (Phishing) supports macos
+    fireEvent.change(platformSelect, { target: { value: 'macos' } });
+
+    expect(screen.getByText('T1566')).toBeInTheDocument();
+    expect(screen.getByText('Phishing')).toBeInTheDocument();
+
+    // T1082 and T1059.001 do not support macos, should not be visible
+    expect(screen.queryByText('T1082')).not.toBeInTheDocument();
+    expect(screen.queryByText('T1059.001')).not.toBeInTheDocument();
+  });
+
+  it('resets to show all techniques when platform filter is changed back to all', () => {
+    render(<MitreMatrix techniques={mockTechniques} />);
+
+    const platformSelect = screen.getByRole('combobox');
+
+    // Filter by macos first
+    fireEvent.change(platformSelect, { target: { value: 'macos' } });
+    expect(screen.queryByText('T1082')).not.toBeInTheDocument();
+
+    // Reset to all
+    fireEvent.change(platformSelect, { target: { value: 'all' } });
+
+    // All techniques should be visible again
+    expect(screen.getByText('T1082')).toBeInTheDocument();
+    expect(screen.getByText('T1059.001')).toBeInTheDocument();
+    expect(screen.getByText('T1566')).toBeInTheDocument();
+  });
 });

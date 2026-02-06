@@ -824,4 +824,53 @@ describe('New Execution Flow', () => {
       expect(screen.getByText('windows')).toBeInTheDocument();
     });
   });
+
+  it('shows loading spinner while scenarios are loading', async () => {
+    vi.mocked(executionApi.list).mockResolvedValue({ data: [] } as never);
+    // Never resolving promise simulates loading state
+    vi.mocked(api.get).mockReturnValue(new Promise(() => {}) as never);
+
+    renderWithClient(<Executions />);
+
+    await screen.findByText('New Execution');
+    fireEvent.click(screen.getByText('New Execution'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Select Scenario')).toBeInTheDocument();
+    });
+
+    // Should show loading spinner (the animate-spin element)
+    const spinner = document.querySelector('.animate-spin');
+    expect(spinner).toBeInTheDocument();
+  });
+
+  it('shows toast with error message when stop execution fails', async () => {
+    const mockExecutions = [
+      {
+        id: 'exec-toast-error',
+        scenario_id: 'toast-scenario',
+        status: 'running',
+        started_at: '2024-01-15T12:00:00Z',
+        safe_mode: true,
+      },
+    ];
+    vi.mocked(executionApi.list).mockResolvedValue({ data: mockExecutions } as never);
+    vi.mocked(executionApi.stop).mockRejectedValue({
+      response: { data: { error: 'Execution already stopped' }, status: 409 }
+    } as never);
+
+    renderWithClient(<Executions />);
+
+    // Open modal
+    const stopButton = await screen.findByRole('button', { name: /stop/i });
+    fireEvent.click(stopButton);
+
+    // Confirm stop
+    const confirmButton = screen.getByRole('button', { name: /stop execution/i });
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Execution already stopped');
+    });
+  });
 });

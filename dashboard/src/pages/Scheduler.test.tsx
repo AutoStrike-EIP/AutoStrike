@@ -1120,4 +1120,124 @@ describe('Scheduler Success Messages', () => {
       expect(toast.default.success).toHaveBeenCalled();
     });
   });
+
+  it('shows correct run status colors for completed, failed, and running runs', async () => {
+    mockGetRuns.mockResolvedValue({
+      data: [
+        { id: 'run-1', schedule_id: 'sched-1', started_at: new Date().toISOString(), status: 'completed', execution_id: 'exec-1', error: '' },
+        { id: 'run-2', schedule_id: 'sched-1', started_at: new Date().toISOString(), status: 'failed', execution_id: '', error: 'timeout' },
+        { id: 'run-3', schedule_id: 'sched-1', started_at: new Date().toISOString(), status: 'running', execution_id: 'exec-3', error: '' },
+      ],
+    });
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    // Expand schedule to show runs
+    const expandButtons = screen.getAllByTitle('Show history');
+    fireEvent.click(expandButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Recent Runs')).toBeInTheDocument();
+    });
+
+    // Check the error message from the failed run
+    expect(screen.getByText('(timeout)')).toBeInTheDocument();
+
+    // Check that "View Execution" links are rendered for runs with execution_id
+    const viewLinks = screen.getAllByText('View Execution');
+    expect(viewLinks.length).toBe(2); // run-1 and run-3 have execution_id
+  });
+
+  it('shows correct submit button text in edit mode', async () => {
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily Security Check')).toBeInTheDocument();
+    });
+
+    const editButtons = screen.getAllByTitle('Edit');
+    fireEvent.click(editButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Schedule')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Update Schedule')).toBeInTheDocument();
+  });
+
+  it('shows Overdue when next_run_at is in the past', async () => {
+    mockScheduleList.mockResolvedValue({
+      data: [{
+        ...mockScheduleData[0],
+        next_run_at: new Date(Date.now() - 60000).toISOString(),
+      }],
+    });
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Overdue')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Paused for next run when status is paused', async () => {
+    mockScheduleList.mockResolvedValue({
+      data: [mockScheduleData[1]], // paused schedule
+    });
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Paused')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Never for null last_run_at', async () => {
+    mockScheduleList.mockResolvedValue({
+      data: [mockScheduleData[1]], // has null last_run_at
+    });
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Never')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Unknown Scenario for unmatched scenario_id', async () => {
+    mockScheduleList.mockResolvedValue({
+      data: [{
+        ...mockScheduleData[0],
+        scenario_id: 'nonexistent-scenario',
+      }],
+    });
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('Unknown Scenario')).toBeInTheDocument();
+    });
+  });
+
+  it('renders disabled schedule without pause/resume buttons', async () => {
+    mockScheduleList.mockResolvedValue({
+      data: [{
+        ...mockScheduleData[0],
+        status: 'disabled',
+      }],
+    });
+
+    renderScheduler();
+
+    await waitFor(() => {
+      expect(screen.getByText('disabled')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTitle('Pause')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Resume')).not.toBeInTheDocument();
+  });
 });

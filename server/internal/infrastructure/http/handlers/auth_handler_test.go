@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -578,5 +579,447 @@ func TestRefreshRequest_Struct(t *testing.T) {
 
 	if req.RefreshToken != "some-token" {
 		t.Errorf("RefreshToken = %q, want 'some-token'", req.RefreshToken)
+	}
+}
+
+// --- Edge case tests ---
+
+func TestAuthHandler_Login_MalformedJSON(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.POST("/login", handler.Login)
+
+	// Completely malformed JSON (truncated)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/login", bytes.NewBufferString(`{"username": "test", "password`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for malformed JSON, got %d", w.Code)
+	}
+}
+
+func TestAuthHandler_Login_EmptyBody(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.POST("/login", handler.Login)
+
+	// Empty body - no JSON at all
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/login", nil)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for empty body, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "username and password are required" {
+		t.Errorf("Expected error 'username and password are required', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Login_InternalServerError(t *testing.T) {
+	repo := newMockUserRepo()
+	// Set a generic find error that is NOT sql.ErrNoRows
+	repo.findErr = errors.New("database connection lost")
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.POST("/login", handler.Login)
+
+	body := LoginRequest{
+		Username: "testuser",
+		Password: "password123",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/login", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500 for generic repo error, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "authentication failed" {
+		t.Errorf("Expected error 'authentication failed', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Login_InactiveUser(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	// Create an inactive user
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), 10)
+	repo.users["user-1"] = &entity.User{
+		ID:           "user-1",
+		Username:     "inactiveuser",
+		PasswordHash: string(hashedPassword),
+		Role:         entity.RoleOperator,
+		IsActive:     false,
+	}
+
+	router := gin.New()
+	router.POST("/login", handler.Login)
+
+	body := LoginRequest{
+		Username: "inactiveuser",
+		Password: "password123",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/login", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	// ErrUserInactive is not ErrInvalidCredentials, so it falls through to 500
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500 for inactive user, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "authentication failed" {
+		t.Errorf("Expected error 'authentication failed', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Login_MissingUsername(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.POST("/login", handler.Login)
+
+	// Has password but missing username
+	body := `{"password": "password123"}`
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/login", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for missing username, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "username and password are required" {
+		t.Errorf("Expected error 'username and password are required', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Refresh_MalformedJSON(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.POST("/refresh", handler.Refresh)
+
+	// Completely malformed JSON
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/refresh", bytes.NewBufferString(`not json at all`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for malformed JSON, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "refresh_token is required" {
+		t.Errorf("Expected error 'refresh_token is required', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Refresh_EmptyBody(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.POST("/refresh", handler.Refresh)
+
+	// Empty body
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/refresh", nil)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for empty body, got %d", w.Code)
+	}
+}
+
+func TestAuthHandler_Refresh_UserNotFound(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	// Create user, login to get tokens, then delete the user
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), 10)
+	repo.users["user-1"] = &entity.User{
+		ID:           "user-1",
+		Username:     "testuser",
+		PasswordHash: string(hashedPassword),
+		Role:         entity.RoleAdmin,
+		IsActive:     true,
+	}
+
+	tokens, err := service.Login(context.Background(), "testuser", "password123")
+	if err != nil {
+		t.Fatalf("Failed to login: %v", err)
+	}
+
+	// Remove the user so Refresh will find a valid token but no user
+	delete(repo.users, "user-1")
+
+	router := gin.New()
+	router.POST("/refresh", handler.Refresh)
+
+	body := RefreshRequest{
+		RefreshToken: tokens.RefreshToken,
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/refresh", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 for user not found during refresh, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "user not found" {
+		t.Errorf("Expected error 'user not found', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Refresh_InternalServerError(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	// Create user, login to get tokens, then set a generic repo error
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), 10)
+	repo.users["user-1"] = &entity.User{
+		ID:           "user-1",
+		Username:     "testuser",
+		PasswordHash: string(hashedPassword),
+		Role:         entity.RoleAdmin,
+		IsActive:     true,
+	}
+
+	tokens, err := service.Login(context.Background(), "testuser", "password123")
+	if err != nil {
+		t.Fatalf("Failed to login: %v", err)
+	}
+
+	// Set a generic error on FindByID so refresh fails with a non-specific error
+	repo.findErr = errors.New("database connection lost")
+
+	router := gin.New()
+	router.POST("/refresh", handler.Refresh)
+
+	body := RefreshRequest{
+		RefreshToken: tokens.RefreshToken,
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/refresh", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500 for generic repo error during refresh, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "token refresh failed" {
+		t.Errorf("Expected error 'token refresh failed', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Me_RepoError(t *testing.T) {
+	repo := newMockUserRepo()
+	// Set a generic error that is NOT sql.ErrNoRows
+	repo.findErr = errors.New("database connection lost")
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.GET("/me", func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		handler.Me(c)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/me", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500 for generic repo error, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "failed to get user" {
+		t.Errorf("Expected error 'failed to get user', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Me_EmptyStringUserID(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.GET("/me", func(c *gin.Context) {
+		// Set user_id to an empty string - it exists and is a string,
+		// but no user will match it
+		c.Set("user_id", "")
+		handler.Me(c)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/me", nil)
+	router.ServeHTTP(w, req)
+
+	// Empty string user_id passes the type assertion but FindByID returns sql.ErrNoRows
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404 for empty string user_id, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "user not found" {
+		t.Errorf("Expected error 'user not found', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Me_NilUserID(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.GET("/me", func(c *gin.Context) {
+		// Set user_id to nil - c.Get returns (nil, true), but type assertion to string fails
+		c.Set("user_id", nil)
+		handler.Me(c)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/me", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500 for nil user_id, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "invalid user id" {
+		t.Errorf("Expected error 'invalid user id', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Me_BoolUserID(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.GET("/me", func(c *gin.Context) {
+		// Set user_id to a boolean - type assertion to string fails
+		c.Set("user_id", true)
+		handler.Me(c)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/me", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500 for bool user_id, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "invalid user id" {
+		t.Errorf("Expected error 'invalid user id', got %q", response["error"])
+	}
+}
+
+func TestAuthHandler_Logout_ResponseBody(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAuthHandler(service)
+
+	router := gin.New()
+	router.POST("/logout", handler.Logout)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/logout", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["message"] != "logged out successfully" {
+		t.Errorf("Expected message 'logged out successfully', got %q", response["message"])
 	}
 }

@@ -1,7 +1,12 @@
 package application
 
 import (
+	"bufio"
 	"context"
+	"fmt"
+	"net"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1353,5 +1358,417 @@ func TestNotificationService_NotifyExecutionStarted_WithEmailChannel(t *testing.
 	// Notification should be created but email not sent (no address)
 	if len(repo.notifications) != 1 {
 		t.Errorf("len(notifications) = %d, want 1", len(repo.notifications))
+	}
+}
+
+// ============================================================================
+// Fake SMTP server for testing sendEmail non-TLS path
+// ============================================================================
+
+// fakeSMTPServer runs a minimal SMTP server that accepts one message.
+// Returns the listener address and a channel that receives the raw DATA.
+func fakeSMTPServer(t *testing.T) (string, <-chan string) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	dataCh := make(chan string, 1)
+
+	go func() {
+		defer ln.Close()
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+		writer := bufio.NewWriter(conn)
+		reader := bufio.NewReader(conn)
+
+		// SMTP greeting
+		fmt.Fprintf(writer, "220 localhost SMTP\r\n")
+		writer.Flush()
+
+		var dataBody strings.Builder
+		inData := false
+
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				break
+			}
+			line = strings.TrimSpace(line)
+
+			if inData {
+				if line == "." {
+					fmt.Fprintf(writer, "250 OK\r\n")
+					writer.Flush()
+					inData = false
+					dataCh <- dataBody.String()
+					continue
+				}
+				dataBody.WriteString(line + "\n")
+				continue
+			}
+
+			switch {
+			case strings.HasPrefix(strings.ToUpper(line), "EHLO"), strings.HasPrefix(strings.ToUpper(line), "HELO"):
+				fmt.Fprintf(writer, "250-localhost\r\n250 AUTH PLAIN LOGIN\r\n")
+				writer.Flush()
+			case strings.HasPrefix(strings.ToUpper(line), "AUTH"):
+				fmt.Fprintf(writer, "235 OK\r\n")
+				writer.Flush()
+			case strings.HasPrefix(strings.ToUpper(line), "MAIL FROM"):
+				fmt.Fprintf(writer, "250 OK\r\n")
+				writer.Flush()
+			case strings.HasPrefix(strings.ToUpper(line), "RCPT TO"):
+				fmt.Fprintf(writer, "250 OK\r\n")
+				writer.Flush()
+			case strings.HasPrefix(strings.ToUpper(line), "DATA"):
+				fmt.Fprintf(writer, "354 Start\r\n")
+				writer.Flush()
+				inData = true
+			case strings.HasPrefix(strings.ToUpper(line), "QUIT"):
+				fmt.Fprintf(writer, "221 Bye\r\n")
+				writer.Flush()
+				return
+			default:
+				fmt.Fprintf(writer, "250 OK\r\n")
+				writer.Flush()
+			}
+		}
+	}()
+
+	return ln.Addr().String(), dataCh
+}
+
+func TestNotificationService_SendEmail_NonTLS_Success(t *testing.T) {
+	addr, dataCh := fakeSMTPServer(t)
+	parts := strings.Split(addr, ":")
+	host := parts[0]
+	port := 0
+	_, _ = fmt.Sscanf(parts[1], "%d", &port)
+
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	smtpConfig := &entity.SMTPConfig{
+		Host:     host,
+		Port:     port,
+		Username: "testuser",
+		Password: "testpass",
+		From:     "noreply@autostrike.test",
+		UseTLS:   false,
+	}
+	svc := NewNotificationService(repo, userRepo, smtpConfig, "https://localhost:8443", nil)
+
+	err := svc.sendEmail("recipient@test.com", entity.NotificationExecutionStarted, map[string]any{
+		"ScenarioName": "Test Scenario",
+		"ExecutionID":  "exec-123",
+		"StartedAt":    time.Now().Format(time.RFC1123),
+		"SafeMode":     true,
+		"DashboardURL": "https://localhost:8443",
+	})
+	if err != nil {
+		t.Fatalf("sendEmail (non-TLS) failed: %v", err)
+	}
+
+	select {
+	case data := <-dataCh:
+		if !strings.Contains(data, "noreply@autostrike.test") {
+			t.Error("Email data should contain From address")
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("Timed out waiting for email data")
+	}
+}
+
+func TestNotificationService_SendEmail_SubjectRenderError(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	smtpConfig := &entity.SMTPConfig{
+		Host:     "smtp.example.com",
+		Port:     587,
+		Username: "user",
+		Password: "pass",
+		From:     "noreply@example.com",
+		UseTLS:   false,
+	}
+	svc := NewNotificationService(repo, userRepo, smtpConfig, "https://localhost:8443", nil)
+
+	// Override the template with an invalid subject template (syntax error)
+	svc.templates[entity.NotificationExecutionStarted] = entity.EmailTemplate{
+		Subject: "{{.Name",
+		Body:    "body",
+	}
+
+	err := svc.sendEmail("test@example.com", entity.NotificationExecutionStarted, map[string]any{})
+	if err == nil {
+		t.Error("sendEmail should fail with subject render error")
+	}
+	if !strings.Contains(err.Error(), "failed to render subject") {
+		t.Errorf("Error should mention subject render failure, got: %v", err)
+	}
+}
+
+func TestNotificationService_SendEmail_BodyRenderError(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	smtpConfig := &entity.SMTPConfig{
+		Host:     "smtp.example.com",
+		Port:     587,
+		Username: "user",
+		Password: "pass",
+		From:     "noreply@example.com",
+		UseTLS:   false,
+	}
+	svc := NewNotificationService(repo, userRepo, smtpConfig, "https://localhost:8443", nil)
+
+	// Override body template with syntax error
+	svc.templates[entity.NotificationExecutionStarted] = entity.EmailTemplate{
+		Subject: "Valid Subject",
+		Body:    "{{.Name",
+	}
+
+	err := svc.sendEmail("test@example.com", entity.NotificationExecutionStarted, map[string]any{})
+	if err == nil {
+		t.Error("sendEmail should fail with body render error")
+	}
+	if !strings.Contains(err.Error(), "failed to render body") {
+		t.Errorf("Error should mention body render failure, got: %v", err)
+	}
+}
+
+func TestNotificationService_SendEmail_NoAuth(t *testing.T) {
+	addr, dataCh := fakeSMTPServer(t)
+	parts := strings.Split(addr, ":")
+	host := parts[0]
+	port := 0
+	_, _ = fmt.Sscanf(parts[1], "%d", &port)
+
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	smtpConfig := &entity.SMTPConfig{
+		Host:     host,
+		Port:     port,
+		Username: "", // No auth
+		Password: "",
+		From:     "noreply@autostrike.test",
+		UseTLS:   false,
+	}
+	svc := NewNotificationService(repo, userRepo, smtpConfig, "https://localhost:8443", nil)
+
+	err := svc.sendEmail("recipient@test.com", entity.NotificationExecutionStarted, map[string]any{
+		"ScenarioName": "Test",
+		"ExecutionID":  "exec-1",
+		"StartedAt":    time.Now().Format(time.RFC1123),
+		"SafeMode":     true,
+		"DashboardURL": "https://localhost:8443",
+	})
+	if err != nil {
+		t.Fatalf("sendEmail without auth failed: %v", err)
+	}
+
+	select {
+	case <-dataCh:
+		// ok
+	case <-time.After(3 * time.Second):
+		t.Error("Timed out waiting for email data")
+	}
+}
+
+func TestNotificationService_SendEmailAsync_Success(t *testing.T) {
+	addr, dataCh := fakeSMTPServer(t)
+	parts := strings.Split(addr, ":")
+	host := parts[0]
+	port := 0
+	_, _ = fmt.Sscanf(parts[1], "%d", &port)
+
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	smtpConfig := &entity.SMTPConfig{
+		Host:     host,
+		Port:     port,
+		Username: "",
+		Password: "",
+		From:     "noreply@autostrike.test",
+		UseTLS:   false,
+	}
+	svc := NewNotificationService(repo, userRepo, smtpConfig, "https://localhost:8443", nil)
+
+	svc.sendEmailAsync("recipient@test.com", entity.NotificationExecutionStarted, map[string]any{
+		"ScenarioName": "Test",
+		"ExecutionID":  "exec-1",
+		"StartedAt":    time.Now().Format(time.RFC1123),
+		"SafeMode":     true,
+		"DashboardURL": "https://localhost:8443",
+	})
+
+	select {
+	case <-dataCh:
+		// Email was sent asynchronously
+	case <-time.After(5 * time.Second):
+		t.Error("Timed out waiting for async email")
+	}
+}
+
+func TestNotificationService_SendEmailAsync_Error(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	// Invalid SMTP config -> sendEmail will fail inside goroutine
+	smtpConfig := &entity.SMTPConfig{
+		Host:     "invalid.host.nonexistent",
+		Port:     99999,
+		Username: "",
+		Password: "",
+		From:     "noreply@autostrike.test",
+		UseTLS:   false,
+	}
+	svc := NewNotificationService(repo, userRepo, smtpConfig, "https://localhost:8443", nil)
+
+	// Should not panic even though the send will fail
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	// Temporarily fill semaphore to verify it gets released
+	originalSem := svc.emailSemaphore
+	svc.emailSemaphore = make(chan struct{}, 1)
+
+	go func() {
+		defer wg.Done()
+		svc.sendEmailAsync("recipient@test.com", entity.NotificationExecutionStarted, map[string]any{
+			"ScenarioName": "Test",
+			"ExecutionID":  "exec-1",
+			"StartedAt":    time.Now().Format(time.RFC1123),
+			"SafeMode":     true,
+			"DashboardURL": "https://localhost:8443",
+		})
+	}()
+	wg.Wait()
+
+	// Wait for goroutine to complete and release semaphore
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify semaphore was released by trying to acquire it
+	select {
+	case svc.emailSemaphore <- struct{}{}:
+		// Semaphore slot available, meaning the goroutine released it
+	case <-time.After(3 * time.Second):
+		t.Error("Semaphore was not released after async email failure")
+	}
+
+	svc.emailSemaphore = originalSem
+}
+
+func TestNotificationService_TestSMTPConnection_Success(t *testing.T) {
+	addr, dataCh := fakeSMTPServer(t)
+	parts := strings.Split(addr, ":")
+	host := parts[0]
+	port := 0
+	_, _ = fmt.Sscanf(parts[1], "%d", &port)
+
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	smtpConfig := &entity.SMTPConfig{
+		Host:     host,
+		Port:     port,
+		Username: "",
+		Password: "",
+		From:     "noreply@autostrike.test",
+		UseTLS:   false,
+	}
+	svc := NewNotificationService(repo, userRepo, smtpConfig, "https://localhost:8443", nil)
+
+	err := svc.TestSMTPConnection(context.Background(), "recipient@test.com")
+	if err != nil {
+		t.Fatalf("TestSMTPConnection failed: %v", err)
+	}
+
+	select {
+	case <-dataCh:
+		// ok
+	case <-time.After(3 * time.Second):
+		t.Error("Timed out waiting for test email data")
+	}
+}
+
+func TestNotificationService_SendEmailTLS_ConnectionFailure(t *testing.T) {
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	smtpConfig := &entity.SMTPConfig{
+		Host:     "127.0.0.1",
+		Port:     1, // Port 1 should refuse connection
+		Username: "",
+		Password: "",
+		From:     "noreply@autostrike.test",
+		UseTLS:   true,
+	}
+	svc := NewNotificationService(repo, userRepo, smtpConfig, "https://localhost:8443", nil)
+
+	err := svc.sendEmail("test@example.com", entity.NotificationExecutionStarted, map[string]any{
+		"ScenarioName": "Test",
+		"ExecutionID":  "exec-1",
+		"StartedAt":    time.Now().Format(time.RFC1123),
+		"SafeMode":     true,
+		"DashboardURL": "https://localhost:8443",
+	})
+	if err == nil {
+		t.Error("sendEmail with TLS should fail when connection is refused")
+	}
+	if !strings.Contains(err.Error(), "failed to connect to SMTP server") {
+		t.Errorf("Error should mention connection failure, got: %v", err)
+	}
+}
+
+func TestNotificationService_NotifyExecutionStarted_WithEmailSend(t *testing.T) {
+	addr, dataCh := fakeSMTPServer(t)
+	parts := strings.Split(addr, ":")
+	host := parts[0]
+	port := 0
+	_, _ = fmt.Sscanf(parts[1], "%d", &port)
+
+	repo := newMockNotificationRepo()
+	userRepo := &mockUserRepoForNotification{}
+	smtpConfig := &entity.SMTPConfig{
+		Host:     host,
+		Port:     port,
+		From:     "noreply@autostrike.test",
+		UseTLS:   false,
+	}
+	svc := NewNotificationService(repo, userRepo, smtpConfig, "https://localhost:8443", nil)
+
+	settings := &entity.NotificationSettings{
+		ID:            "settings-1",
+		UserID:        "user-1",
+		Channel:       entity.ChannelEmail,
+		Enabled:       true,
+		EmailAddress:  "user@test.com",
+		NotifyOnStart: true,
+	}
+	repo.settings[settings.ID] = settings
+
+	execution := &entity.Execution{
+		ID:        "exec-1",
+		StartedAt: time.Now(),
+		SafeMode:  true,
+	}
+
+	err := svc.NotifyExecutionStarted(context.Background(), execution, "Test Scenario")
+	if err != nil {
+		t.Fatalf("NotifyExecutionStarted failed: %v", err)
+	}
+
+	// Notification created
+	if len(repo.notifications) != 1 {
+		t.Errorf("len(notifications) = %d, want 1", len(repo.notifications))
+	}
+
+	// Email sent asynchronously
+	select {
+	case <-dataCh:
+		// ok
+	case <-time.After(5 * time.Second):
+		t.Error("Timed out waiting for email to be sent")
 	}
 }

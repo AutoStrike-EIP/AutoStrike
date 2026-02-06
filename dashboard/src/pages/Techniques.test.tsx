@@ -500,4 +500,58 @@ describe('Techniques Import Modal', () => {
       expect(toast.error).toHaveBeenCalledWith('Failed to import techniques');
     });
   });
+
+  it('does nothing when file input change fires with no file selected', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+
+    renderWithClient(<Techniques />);
+
+    await screen.findByText('Techniques');
+    fireEvent.click(screen.getByText('Import Techniques'));
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    // Fire change event with no files
+    fireEvent.change(input, { target: { files: [] } });
+
+    // No toast error and no import call
+    expect(techniqueApi.import).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('closes import modal and resets importResult via the close callback', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+    vi.mocked(techniqueApi.import).mockResolvedValue({
+      data: { imported: 1, failed: 0 },
+    } as never);
+
+    renderWithClient(<Techniques />);
+
+    await screen.findByText('Techniques');
+    fireEvent.click(screen.getByText('Import Techniques'));
+
+    // Import a file to get a result
+    const file = new File(
+      [JSON.stringify([{ id: 'T1082', name: 'Test', tactic: 'discovery', platforms: ['windows'], is_safe: true }])],
+      'test.json',
+      { type: 'application/json' }
+    );
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText('Import Successful')).toBeInTheDocument();
+    });
+
+    // Click Done to close modal (this calls closeImportModal which resets both showImportModal and importResult)
+    fireEvent.click(screen.getByText('Done'));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Import Successful')).not.toBeInTheDocument();
+    });
+
+    // Re-open the modal - importResult should be reset, showing the upload form
+    fireEvent.click(screen.getByText('Import Techniques'));
+    expect(screen.getByText(/Upload a JSON file/)).toBeInTheDocument();
+  });
 });

@@ -72,6 +72,9 @@ function createTestQueryClient() {
       queries: {
         retry: false,
       },
+      mutations: {
+        retry: false,
+      },
     },
   });
 }
@@ -683,5 +686,612 @@ describe('Users Action Buttons', () => {
     expect(roleButtons.length).toBeGreaterThan(0);
     expect(passwordButtons.length).toBeGreaterThan(0);
     expect(deactivateButtons.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Users Form Submissions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('submits create form and calls createUser API', async () => {
+    const { adminApi } = await import('../../lib/api');
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add User'));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'newuser' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'newuser@test.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Create User/ }));
+
+    await waitFor(() => {
+      expect(adminApi.createUser).toHaveBeenCalledWith({
+        username: 'newuser',
+        email: 'newuser@test.com',
+        password: 'password123',
+        role: 'viewer',
+      });
+    });
+  });
+
+  it('submits edit form and calls updateUser API', async () => {
+    const { adminApi } = await import('../../lib/api');
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const editButtons = screen.getAllByTitle('Edit user');
+    fireEvent.click(editButtons[1]); // Click operator's edit button
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Edit User' })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'updated-operator' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }));
+
+    await waitFor(() => {
+      expect(adminApi.updateUser).toHaveBeenCalledWith('user-2', {
+        username: 'updated-operator',
+        email: 'operator@example.com',
+      });
+    });
+  });
+
+  it('submits role change form and calls updateUserRole API', async () => {
+    const { adminApi } = await import('../../lib/api');
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('operator@example.com')).toBeInTheDocument();
+    });
+
+    const roleButtons = screen.getAllByTitle('Change role');
+    const enabledRoleButton = roleButtons.find(btn => !(btn as HTMLButtonElement).disabled);
+    if (enabledRoleButton) {
+      fireEvent.click(enabledRoleButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Change Role' })).toBeInTheDocument();
+      });
+
+      fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'analyst' } });
+      fireEvent.click(screen.getByRole('button', { name: /Update Role/ }));
+
+      await waitFor(() => {
+        expect(adminApi.updateUserRole).toHaveBeenCalled();
+      });
+    }
+  });
+
+  it('submits password reset form and calls resetPassword API', async () => {
+    const { adminApi } = await import('../../lib/api');
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const passwordButtons = screen.getAllByTitle('Reset password');
+    fireEvent.click(passwordButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('New Password')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'newpassword123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Reset Password/ }));
+
+    await waitFor(() => {
+      expect(adminApi.resetPassword).toHaveBeenCalledWith('user-1', { new_password: 'newpassword123' });
+    });
+  });
+
+  it('confirms deactivation and calls deactivateUser API', async () => {
+    const { adminApi } = await import('../../lib/api');
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('operator@example.com')).toBeInTheDocument();
+    });
+
+    const deactivateButtons = screen.getAllByTitle('Deactivate user');
+    const enabledButton = deactivateButtons.find(btn => !(btn as HTMLButtonElement).disabled);
+    if (enabledButton) {
+      fireEvent.click(enabledButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Deactivate User' })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /^Deactivate$/ }));
+
+      await waitFor(() => {
+        expect(adminApi.deactivateUser).toHaveBeenCalled();
+      });
+    }
+  });
+
+  it('confirms reactivation and calls reactivateUser API', async () => {
+    const { adminApi } = await import('../../lib/api');
+
+    vi.mocked(adminApi.listUsers).mockResolvedValueOnce({
+      data: {
+        users: [
+          {
+            id: 'user-3',
+            username: 'inactive',
+            email: 'inactive@example.com',
+            role: 'viewer',
+            is_active: false,
+            last_login_at: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        total: 1,
+      },
+    } as never);
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('inactive@example.com')).toBeInTheDocument();
+    });
+
+    const reactivateButton = screen.getByTitle('Reactivate user');
+    fireEvent.click(reactivateButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Reactivate User' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Reactivate$/ }));
+
+    await waitFor(() => {
+      expect(adminApi.reactivateUser).toHaveBeenCalledWith('user-3');
+    });
+  });
+});
+
+describe('Users Mutation Errors', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows error alert when create mutation fails', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.createUser).mockRejectedValueOnce({
+      response: { data: { error: 'Username already exists' } },
+    });
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add User'));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'newuser' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'newuser@test.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Create User/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Username already exists')).toBeInTheDocument();
+    });
+  });
+
+  it('shows fallback error when create mutation fails without error message', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.createUser).mockRejectedValueOnce(new Error('Network error'));
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add User'));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'newuser' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'newuser@test.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Create User/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to create user')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error alert when update mutation fails', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.updateUser).mockRejectedValueOnce({
+      response: { data: { error: 'Duplicate username' } },
+    });
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const editButtons = screen.getAllByTitle('Edit user');
+    fireEvent.click(editButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Edit User' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Duplicate username')).toBeInTheDocument();
+    });
+  });
+
+  it('shows fallback error when update mutation fails without message', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.updateUser).mockRejectedValueOnce(new Error('Server error'));
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const editButtons = screen.getAllByTitle('Edit user');
+    fireEvent.click(editButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Edit User' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to update user')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error alert when role change fails', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.updateUserRole).mockRejectedValueOnce({
+      response: { data: { error: 'Cannot change role' } },
+    });
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('operator@example.com')).toBeInTheDocument();
+    });
+
+    const roleButtons = screen.getAllByTitle('Change role');
+    const enabledButton = roleButtons.find(btn => !(btn as HTMLButtonElement).disabled);
+    if (enabledButton) {
+      fireEvent.click(enabledButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Change Role' })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Update Role/ }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Cannot change role')).toBeInTheDocument();
+      });
+    }
+  });
+
+  it('shows fallback error when role mutation fails without message', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.updateUserRole).mockRejectedValueOnce(new Error('Network'));
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('operator@example.com')).toBeInTheDocument();
+    });
+
+    const roleButtons = screen.getAllByTitle('Change role');
+    const enabledButton = roleButtons.find(btn => !(btn as HTMLButtonElement).disabled);
+    if (enabledButton) {
+      fireEvent.click(enabledButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Change Role' })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Update Role/ }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Failed to update role')).toBeInTheDocument();
+      });
+    }
+  });
+
+  it('shows error alert when password reset fails', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.resetPassword).mockRejectedValueOnce({
+      response: { data: { error: 'Password too weak' } },
+    });
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const passwordButtons = screen.getAllByTitle('Reset password');
+    fireEvent.click(passwordButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('New Password')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'newpassword123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Reset Password/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Password too weak')).toBeInTheDocument();
+    });
+  });
+
+  it('shows fallback error when password reset fails without message', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.resetPassword).mockRejectedValueOnce(new Error('Network'));
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    const passwordButtons = screen.getAllByTitle('Reset password');
+    fireEvent.click(passwordButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('New Password')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'newpassword123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Reset Password/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to reset password')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error alert when deactivation fails', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.deactivateUser).mockRejectedValueOnce({
+      response: { data: { error: 'Cannot deactivate last admin' } },
+    });
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('operator@example.com')).toBeInTheDocument();
+    });
+
+    const deactivateButtons = screen.getAllByTitle('Deactivate user');
+    const enabledButton = deactivateButtons.find(btn => !(btn as HTMLButtonElement).disabled);
+    if (enabledButton) {
+      fireEvent.click(enabledButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Deactivate User' })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /^Deactivate$/ }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Cannot deactivate last admin')).toBeInTheDocument();
+      });
+    }
+  });
+
+  it('shows fallback error when deactivation fails without message', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.deactivateUser).mockRejectedValueOnce(new Error('Network'));
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('operator@example.com')).toBeInTheDocument();
+    });
+
+    const deactivateButtons = screen.getAllByTitle('Deactivate user');
+    const enabledButton = deactivateButtons.find(btn => !(btn as HTMLButtonElement).disabled);
+    if (enabledButton) {
+      fireEvent.click(enabledButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Deactivate User' })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /^Deactivate$/ }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Failed to deactivate user')).toBeInTheDocument();
+      });
+    }
+  });
+
+  it('shows error alert when reactivation fails', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.reactivateUser).mockRejectedValueOnce({
+      response: { data: { error: 'Cannot reactivate' } },
+    });
+
+    vi.mocked(adminApi.listUsers).mockResolvedValueOnce({
+      data: {
+        users: [{
+          id: 'user-3',
+          username: 'inactive',
+          email: 'inactive@example.com',
+          role: 'viewer',
+          is_active: false,
+          last_login_at: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }],
+        total: 1,
+      },
+    } as never);
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('inactive@example.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle('Reactivate user'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Reactivate User' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Reactivate$/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Cannot reactivate')).toBeInTheDocument();
+    });
+  });
+
+  it('shows fallback error when reactivation fails without message', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.reactivateUser).mockRejectedValueOnce(new Error('Network'));
+
+    vi.mocked(adminApi.listUsers).mockResolvedValueOnce({
+      data: {
+        users: [{
+          id: 'user-3',
+          username: 'inactive',
+          email: 'inactive@example.com',
+          role: 'viewer',
+          is_active: false,
+          last_login_at: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }],
+        total: 1,
+      },
+    } as never);
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('inactive@example.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle('Reactivate user'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Reactivate User' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Reactivate$/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to reactivate user')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Users Role Badges - All Roles', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('displays rssi and analyst role badges', async () => {
+    const { adminApi } = await import('../../lib/api');
+    vi.mocked(adminApi.listUsers).mockResolvedValueOnce({
+      data: {
+        users: [
+          {
+            id: 'user-rssi',
+            username: 'rssi-user',
+            email: 'rssi@example.com',
+            role: 'rssi',
+            is_active: true,
+            last_login_at: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: 'user-analyst',
+            username: 'analyst-user',
+            email: 'analyst@example.com',
+            role: 'analyst',
+            is_active: true,
+            last_login_at: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        total: 2,
+      },
+    } as never);
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('Security Officer (RSSI)')).toBeInTheDocument();
+      expect(screen.getByText('Analyst')).toBeInTheDocument();
+    });
+
+    const rssiBadge = screen.getByText('Security Officer (RSSI)');
+    expect(rssiBadge.className).toContain('bg-purple-100');
+
+    const analystBadge = screen.getByText('Analyst');
+    expect(analystBadge.className).toContain('bg-green-100');
+  });
+});
+
+describe('Users Current User Indicator', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows (you) indicator for current user', async () => {
+    const { useAuth } = await import('../../contexts/AuthContext');
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'user-1', username: 'admin', email: 'admin@example.com', role: 'admin', is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      authEnabled: true,
+    });
+
+    renderUsers();
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@example.com')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('(you)')).toBeInTheDocument();
   });
 });

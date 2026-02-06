@@ -97,7 +97,9 @@ describe('Layout', () => {
     expect(screen.getByText('Techniques')).toBeInTheDocument();
     expect(screen.getByText('Scenarios')).toBeInTheDocument();
     expect(screen.getByText('Executions')).toBeInTheDocument();
-    expect(screen.getByText('Settings')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Settings')).toBeInTheDocument();
+    });
   });
 
   it('renders children content', async () => {

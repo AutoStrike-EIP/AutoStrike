@@ -144,6 +144,26 @@ describe('SecurityScore', () => {
     expect(container.firstChild).toHaveClass('custom-class');
   });
 
+  it('skips animation when prefers-reduced-motion is set', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+
+    render(<SecurityScore score={75} animated={true} />);
+
+    expect(screen.getByText('75.0')).toBeInTheDocument();
+  });
+
+  it('clamps negative score to 0', () => {
+    const { container } = render(<SecurityScore score={-10} animated={false} />);
+
+    const meter = container.querySelector('meter');
+    expect(meter).toHaveAttribute('value', '0');
+    expect(screen.getByText('0.0')).toBeInTheDocument();
+  });
+
   it('animates from current value on score prop change, not from 0', () => {
     // Mock requestAnimationFrame to run callback immediately with a time far enough for completion
     let rafCallback: ((time: number) => void) | null = null;

@@ -367,4 +367,76 @@ describe('useWebSocket', () => {
     vi.restoreAllMocks();
   });
 
+  it('should reset retry counter on successful reconnection', async () => {
+    const { result } = renderHook(() => useWebSocket({
+      maxRetries: 3,
+      reconnectInterval: 50,
+    }));
+
+    await waitFor(() => {
+      expect(result.current.isConnected).toBe(true);
+    });
+
+    // Simulate close to trigger a reconnect
+    act(() => {
+      mockWebSocketInstances[0].readyState = MockWebSocket.CLOSED;
+      mockWebSocketInstances[0].onclose?.(new CloseEvent('close'));
+    });
+
+    // Wait for reconnection
+    await waitFor(() => {
+      expect(mockWebSocketInstances.length).toBe(2);
+    }, { timeout: 500 });
+
+    // Simulate the new connection opening (retry counter resets to 0 in onopen)
+    act(() => {
+      mockWebSocketInstances[1].readyState = MockWebSocket.OPEN;
+      mockWebSocketInstances[1].onopen?.(new Event('open'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.isConnected).toBe(true);
+    });
+
+    // Now close again - should be able to reconnect (retry counter was reset)
+    act(() => {
+      mockWebSocketInstances[1].readyState = MockWebSocket.CLOSED;
+      mockWebSocketInstances[1].onclose?.(new CloseEvent('close'));
+    });
+
+    await waitFor(() => {
+      expect(mockWebSocketInstances.length).toBe(3);
+    }, { timeout: 500 });
+  });
+
+  it('should clear pending reconnect timeout on unmount', async () => {
+    const { result, unmount } = renderHook(() => useWebSocket({
+      maxRetries: 3,
+      reconnectInterval: 5000, // Long interval so timeout is still pending
+    }));
+
+    await waitFor(() => {
+      expect(result.current.isConnected).toBe(true);
+    });
+
+    // Simulate close to trigger a pending reconnect timeout
+    act(() => {
+      mockWebSocketInstances[0].readyState = MockWebSocket.CLOSED;
+      mockWebSocketInstances[0].onclose?.(new CloseEvent('close'));
+    });
+
+    const instanceCountBeforeUnmount = mockWebSocketInstances.length;
+
+    // Unmount while reconnect timeout is pending
+    unmount();
+
+    // Wait to ensure the reconnect timeout was cleared and doesn't fire
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    });
+
+    // No new connection should have been created
+    expect(mockWebSocketInstances.length).toBe(instanceCountBeforeUnmount);
+  });
+
 });

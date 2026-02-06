@@ -13,7 +13,12 @@ vi.mock('../lib/api', () => ({
     logout: vi.fn(),
     refresh: vi.fn(),
   },
+  healthApi: {
+    check: vi.fn(),
+  },
 }));
+
+import { healthApi } from '../lib/api';
 
 // Mock localStorage
 const localStorageMock = {
@@ -537,6 +542,155 @@ describe('ProtectedRoute without role requirements', () => {
 
     await waitFor(() => {
       expect(screen.getByText('General Content')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('ProtectedRoute with auth disabled', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders children when auth is disabled even without a user', async () => {
+    // No token in localStorage
+    localStorageMock.getItem.mockReturnValue(null);
+    // Health check returns auth_enabled: false
+    vi.mocked(healthApi.check).mockResolvedValue({
+      data: { status: 'ok', auth_enabled: false },
+    } as never);
+
+    render(
+      <MemoryRouter initialEntries={['/protected']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<div>Login Page</div>} />
+            <Route
+              path="/protected"
+              element={
+                <ProtectedRoute>
+                  <div>Protected Content</div>
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Protected Content')).toBeInTheDocument();
+    });
+  });
+
+  it('skips role checks when auth is disabled', async () => {
+    // No token in localStorage
+    localStorageMock.getItem.mockReturnValue(null);
+    // Health check returns auth_enabled: false
+    vi.mocked(healthApi.check).mockResolvedValue({
+      data: { status: 'ok', auth_enabled: false },
+    } as never);
+
+    render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<div>Login Page</div>} />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <div>Admin Content</div>
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Admin Content')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('ProtectedRoute with both requiredRole and allowedRoles', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Ensure auth is enabled so role checks are exercised
+    vi.mocked(healthApi.check).mockResolvedValue({
+      data: { status: 'ok', auth_enabled: true },
+    } as never);
+  });
+
+  it('allowedRoles takes precedence over requiredRole', async () => {
+    localStorageMock.getItem.mockReturnValue('test-token');
+    vi.mocked(authApi.me).mockResolvedValue({
+      data: {
+        id: 'user-1',
+        username: 'analyst',
+        email: 'analyst@example.com',
+        role: 'analyst',
+      },
+    } as never);
+
+    render(
+      <MemoryRouter initialEntries={['/special']}>
+        <AuthProvider>
+          <Routes>
+            <Route
+              path="/special"
+              element={
+                <ProtectedRoute requiredRole="admin" allowedRoles={['analyst']}>
+                  <div>Special Content</div>
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    // analyst would be denied by requiredRole='admin' (hierarchy: analyst=2 < admin=5)
+    // but allowedRoles=['analyst'] takes precedence and grants access
+    await waitFor(() => {
+      expect(screen.getByText('Special Content')).toBeInTheDocument();
+    });
+  });
+
+  it('denies access when user role is not in allowedRoles even if requiredRole would allow', async () => {
+    localStorageMock.getItem.mockReturnValue('test-token');
+    vi.mocked(authApi.me).mockResolvedValue({
+      data: {
+        id: 'user-1',
+        username: 'admin',
+        email: 'admin@example.com',
+        role: 'admin',
+      },
+    } as never);
+
+    render(
+      <MemoryRouter initialEntries={['/special']}>
+        <AuthProvider>
+          <Routes>
+            <Route
+              path="/special"
+              element={
+                <ProtectedRoute requiredRole="viewer" allowedRoles={['analyst']}>
+                  <div>Special Content</div>
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    // admin would be allowed by requiredRole='viewer' (hierarchy: admin=5 > viewer=1)
+    // but allowedRoles=['analyst'] takes precedence and denies access since admin is not in the list
+    await waitFor(() => {
+      expect(screen.getByText('403')).toBeInTheDocument();
+      expect(screen.getByText('Access Denied')).toBeInTheDocument();
     });
   });
 });

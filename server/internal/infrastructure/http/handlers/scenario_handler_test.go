@@ -1239,3 +1239,594 @@ func TestImportScenariosResponse_Struct(t *testing.T) {
 		t.Errorf("Imported = %d, want 1", resp.Imported)
 	}
 }
+
+// --- Unauthenticated access tests ---
+
+func TestScenarioHandler_ListScenarios_Unauthenticated(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios", handler.ListScenarios)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestScenarioHandler_GetScenario_Unauthenticated(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios/:id", handler.GetScenario)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios/s1", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestScenarioHandler_GetScenariosByTag_Unauthenticated(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios/tag/:tag", handler.GetScenariosByTag)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios/tag/apt29", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestScenarioHandler_CreateScenario_Unauthenticated(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.POST("/scenarios", handler.CreateScenario)
+
+	body := `{"name":"Test","phases":[{"name":"Phase 1","techniques":["T1082"],"order":1}]}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/scenarios", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestScenarioHandler_UpdateScenario_Unauthenticated(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.PUT("/scenarios/:id", handler.UpdateScenario)
+
+	body := `{"name":"Test","phases":[{"name":"Phase 1","techniques":["T1082"],"order":1}]}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/scenarios/s1", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestScenarioHandler_DeleteScenario_Unauthenticated(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.DELETE("/scenarios/:id", handler.DeleteScenario)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/scenarios/s1", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestScenarioHandler_ExportScenarios_Unauthenticated(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios/export", handler.ExportScenarios)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios/export", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestScenarioHandler_ExportScenario_Unauthenticated(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios/:id/export", handler.ExportScenario)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios/s1/export", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestScenarioHandler_ImportScenarios_Unauthenticated(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.POST("/scenarios/import", handler.ImportScenarios)
+
+	body := `{"version":"1.0","scenarios":[{"name":"Test","phases":[{"name":"Phase 1","techniques":["T1082"],"order":1}]}]}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/scenarios/import", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+// --- Export with multiple specific IDs ---
+
+func TestScenarioHandler_ExportScenarios_WithMultipleIDs(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	scenarioRepo.scenarios["s1"] = &entity.Scenario{
+		ID:   "s1",
+		Name: "Test Scenario 1",
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1082"}, Order: 1},
+		},
+	}
+	scenarioRepo.scenarios["s2"] = &entity.Scenario{
+		ID:   "s2",
+		Name: "Test Scenario 2",
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1059"}, Order: 1},
+		},
+	}
+	scenarioRepo.scenarios["s3"] = &entity.Scenario{
+		ID:   "s3",
+		Name: "Test Scenario 3",
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1057"}, Order: 1},
+		},
+	}
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios/export", withAuth(handler.ExportScenarios))
+
+	// Export only s1 and s3
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios/export?ids=s1,s3", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var export ScenarioExport
+	if err := json.Unmarshal(w.Body.Bytes(), &export); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if len(export.Scenarios) != 2 {
+		t.Errorf("Expected 2 scenarios, got %d", len(export.Scenarios))
+	}
+}
+
+// --- Export with empty IDs after trimming ---
+
+func TestScenarioHandler_ExportScenarios_WithEmptyIDsAfterTrim(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	scenarioRepo.scenarios["s1"] = &entity.Scenario{
+		ID:   "s1",
+		Name: "Test Scenario 1",
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1082"}, Order: 1},
+		},
+	}
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios/export", withAuth(handler.ExportScenarios))
+
+	// IDs with extra commas and spaces that result in empty strings after trim
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios/export?ids=s1,,+,", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var export ScenarioExport
+	if err := json.Unmarshal(w.Body.Bytes(), &export); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if len(export.Scenarios) != 1 {
+		t.Errorf("Expected 1 scenario, got %d", len(export.Scenarios))
+	}
+}
+
+// --- Export all scenarios with service error ---
+
+func TestScenarioHandler_ExportScenarios_ServiceError(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	scenarioRepo.err = errors.New("database error")
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios/export", withAuth(handler.ExportScenarios))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios/export", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+// --- Export nil scenarios returns empty array ---
+
+func TestScenarioHandler_ExportScenarios_NilScenarios(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	// Empty repo returns empty slice which triggers nil check
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios/export", withAuth(handler.ExportScenarios))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios/export", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	var export ScenarioExport
+	if err := json.Unmarshal(w.Body.Bytes(), &export); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if export.Scenarios == nil {
+		t.Error("Expected non-nil scenarios array")
+	}
+
+	if len(export.Scenarios) != 0 {
+		t.Errorf("Expected 0 scenarios, got %d", len(export.Scenarios))
+	}
+}
+
+// --- Create scenario with invalid JSON ---
+
+func TestScenarioHandler_CreateScenario_InvalidJSON(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.POST("/scenarios", withAuth(handler.CreateScenario))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/scenarios", bytes.NewBufferString("{invalid json"))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+// --- Create scenario with missing phases (name present but no phases) ---
+
+func TestScenarioHandler_CreateScenario_MissingPhases(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.POST("/scenarios", withAuth(handler.CreateScenario))
+
+	body := `{"name": "Test Scenario"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/scenarios", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+// --- Create scenario with missing name (phases present but no name) ---
+
+func TestScenarioHandler_CreateScenario_MissingName(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.POST("/scenarios", withAuth(handler.CreateScenario))
+
+	body := `{"phases":[{"name":"Phase 1","techniques":["T1082"],"order":1}]}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/scenarios", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+// --- Update scenario with invalid JSON ---
+
+func TestScenarioHandler_UpdateScenario_InvalidJSON(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	scenarioRepo.scenarios["s1"] = &entity.Scenario{
+		ID:        "s1",
+		Name:      "Original Name",
+		CreatedAt: time.Now(),
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1082"}, Order: 1},
+		},
+	}
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.PUT("/scenarios/:id", withAuth(handler.UpdateScenario))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/scenarios/s1", bytes.NewBufferString("{invalid json"))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+// --- Export with one valid and one invalid ID returns not found ---
+
+func TestScenarioHandler_ExportScenarios_WithMixedValidInvalidIDs(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	scenarioRepo.scenarios["s1"] = &entity.Scenario{
+		ID:   "s1",
+		Name: "Test Scenario 1",
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1082"}, Order: 1},
+		},
+	}
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.GET("/scenarios/export", withAuth(handler.ExportScenarios))
+
+	// s1 exists but nonexistent does not
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/scenarios/export?ids=s1,nonexistent", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- Import with service error (repo returns error on create) ---
+
+func TestScenarioHandler_ImportScenarios_ServiceError(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	scenarioRepo.err = errors.New("database error")
+	techRepo := newTestTechniqueRepo()
+	techRepo.techniques["T1082"] = &entity.Technique{
+		ID:        "T1082",
+		Name:      "System Information Discovery",
+		Tactic:    entity.TacticDiscovery,
+		Platforms: []string{"windows", "linux"},
+	}
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.POST("/scenarios/import", withAuth(handler.ImportScenarios))
+
+	body := ImportScenariosRequest{
+		Version: "1.0",
+		Scenarios: []ImportScenarioRequest{
+			{
+				Name: "Test Scenario",
+				Phases: []entity.Phase{
+					{Name: "Discovery", Techniques: []string{"T1082"}, Order: 1},
+				},
+			},
+		},
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/scenarios/import", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	// All scenarios fail, so status should be 400
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response ImportScenariosResponse
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
+
+	if response.Imported != 0 {
+		t.Errorf("Expected 0 imported, got %d", response.Imported)
+	}
+	if response.Failed != 1 {
+		t.Errorf("Expected 1 failed, got %d", response.Failed)
+	}
+}
+
+// --- Import with missing scenarios field in JSON ---
+
+func TestScenarioHandler_ImportScenarios_MissingScenariosField(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.POST("/scenarios/import", withAuth(handler.ImportScenarios))
+
+	// JSON with version but missing the required "scenarios" field
+	body := `{"version": "1.0"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/scenarios/import", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- Create scenario with empty body ---
+
+func TestScenarioHandler_CreateScenario_EmptyBody(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.POST("/scenarios", withAuth(handler.CreateScenario))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/scenarios", bytes.NewBufferString(""))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+// --- Update scenario with missing name (phases present but no name) ---
+
+func TestScenarioHandler_UpdateScenario_MissingName(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	scenarioRepo.scenarios["s1"] = &entity.Scenario{
+		ID:        "s1",
+		Name:      "Original Name",
+		CreatedAt: time.Now(),
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1082"}, Order: 1},
+		},
+	}
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.PUT("/scenarios/:id", withAuth(handler.UpdateScenario))
+
+	body := `{"phases":[{"name":"Phase 1","techniques":["T1082"],"order":1}]}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/scenarios/s1", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+// --- Update scenario with missing phases ---
+
+func TestScenarioHandler_UpdateScenario_MissingPhases(t *testing.T) {
+	scenarioRepo := newTestScenarioRepo()
+	scenarioRepo.scenarios["s1"] = &entity.Scenario{
+		ID:        "s1",
+		Name:      "Original Name",
+		CreatedAt: time.Now(),
+		Phases: []entity.Phase{
+			{Name: "Phase 1", Techniques: []string{"T1082"}, Order: 1},
+		},
+	}
+	techRepo := newTestTechniqueRepo()
+	svc := createTestScenarioService(scenarioRepo, techRepo)
+	handler := NewScenarioHandler(svc)
+
+	router := gin.New()
+	router.PUT("/scenarios/:id", withAuth(handler.UpdateScenario))
+
+	body := `{"name": "Updated Name"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/scenarios/s1", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}

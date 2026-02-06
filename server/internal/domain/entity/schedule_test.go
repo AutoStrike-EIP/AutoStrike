@@ -416,3 +416,132 @@ func TestScheduleRun_Failed(t *testing.T) {
 		t.Errorf("ExecutionID = %q, want empty", run.ExecutionID)
 	}
 }
+
+func TestValidateCronExpr_Valid(t *testing.T) {
+	tests := []string{
+		"0 0 * * *",       // Every day at midnight
+		"*/5 * * * *",     // Every 5 minutes
+		"0 9 * * 1-5",     // Weekdays at 9am
+		"30 2 1 * *",      // 1st of month at 2:30
+	}
+	for _, expr := range tests {
+		if err := ValidateCronExpr(expr); err != nil {
+			t.Errorf("ValidateCronExpr(%q) = %v, want nil", expr, err)
+		}
+	}
+}
+
+func TestValidateCronExpr_Invalid(t *testing.T) {
+	tests := []string{
+		"not a cron",
+		"* * *",           // Too few fields
+		"60 * * * *",      // Invalid minute
+		"* 25 * * *",      // Invalid hour
+	}
+	for _, expr := range tests {
+		if err := ValidateCronExpr(expr); err == nil {
+			t.Errorf("ValidateCronExpr(%q) = nil, want error", expr)
+		}
+	}
+}
+
+func TestValidateCronExpr_Empty(t *testing.T) {
+	if err := ValidateCronExpr(""); err != nil {
+		t.Errorf("ValidateCronExpr(\"\") = %v, want nil", err)
+	}
+}
+
+func TestCalculateNextRun_CronEmptyExpr(t *testing.T) {
+	s := &Schedule{
+		Frequency: FrequencyCron,
+		CronExpr:  "",
+		Status:    ScheduleStatusActive,
+	}
+	result := s.CalculateNextRun(time.Now())
+	if result != nil {
+		t.Error("CalculateNextRun should return nil for empty cron expression")
+	}
+}
+
+func TestCalculateNextRun_CronInvalidExpr(t *testing.T) {
+	s := &Schedule{
+		Frequency: FrequencyCron,
+		CronExpr:  "invalid",
+		Status:    ScheduleStatusActive,
+	}
+	result := s.CalculateNextRun(time.Now())
+	if result != nil {
+		t.Error("CalculateNextRun should return nil for invalid cron expression")
+	}
+}
+
+func TestCalculateNextRun_CronValidExpr(t *testing.T) {
+	s := &Schedule{
+		Frequency: FrequencyCron,
+		CronExpr:  "0 0 * * *",
+		Status:    ScheduleStatusActive,
+	}
+	now := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+	result := s.CalculateNextRun(now)
+	if result == nil {
+		t.Fatal("CalculateNextRun should return next run time for valid cron")
+	}
+	if !result.After(now) {
+		t.Error("Next run should be after 'now'")
+	}
+}
+
+func TestCalculateNextRun_UnknownFrequency(t *testing.T) {
+	s := &Schedule{
+		Frequency: "unknown",
+		Status:    ScheduleStatusActive,
+	}
+	result := s.CalculateNextRun(time.Now())
+	if result != nil {
+		t.Error("CalculateNextRun should return nil for unknown frequency")
+	}
+}
+
+func TestCalculateNextRun_OnceWithExistingNextRun(t *testing.T) {
+	nextRun := time.Now().Add(time.Hour)
+	s := &Schedule{
+		Frequency: FrequencyOnce,
+		Status:    ScheduleStatusActive,
+		NextRunAt: &nextRun,
+	}
+	result := s.CalculateNextRun(time.Now())
+	if result == nil {
+		t.Fatal("CalculateNextRun should return NextRunAt for once frequency")
+	}
+	if !result.Equal(nextRun) {
+		t.Error("Should return the existing NextRunAt")
+	}
+}
+
+func TestCalculateNextRun_OnceAlreadyRun(t *testing.T) {
+	lastRun := time.Now()
+	s := &Schedule{
+		Frequency: FrequencyOnce,
+		Status:    ScheduleStatusActive,
+		LastRunAt: &lastRun,
+	}
+	result := s.CalculateNextRun(time.Now())
+	if result != nil {
+		t.Error("CalculateNextRun should return nil for once frequency that already ran")
+	}
+}
+
+func TestCalculateNextRun_OnceNoStartAt(t *testing.T) {
+	now := time.Now()
+	s := &Schedule{
+		Frequency: FrequencyOnce,
+		Status:    ScheduleStatusActive,
+	}
+	result := s.CalculateNextRun(now)
+	if result == nil {
+		t.Fatal("CalculateNextRun should return 'from' time for once frequency with no start_at")
+	}
+	if !result.Equal(now) {
+		t.Error("Should return the 'from' time")
+	}
+}

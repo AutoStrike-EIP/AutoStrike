@@ -1079,3 +1079,142 @@ func TestAdminHandler_UpdateUser_DuplicateUsername(t *testing.T) {
 		t.Errorf("Expected status 409, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestAdminHandler_GetUser_EmptyID(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAdminHandler(service)
+
+	// Route without :id param so c.Param("id") returns ""
+	router := gin.New()
+	router.GET("/users/get", func(c *gin.Context) {
+		c.Set("role", "admin")
+		handler.GetUser(c)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/users/get", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminHandler_UpdateUser_EmptyID(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAdminHandler(service)
+
+	// Route without :id param so c.Param("id") returns ""
+	router := gin.New()
+	router.PUT("/users/update", func(c *gin.Context) {
+		c.Set("role", "admin")
+		handler.UpdateUser(c)
+	})
+
+	body := UpdateUserRequest{Username: "newname"}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/users/update", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminHandler_UpdateUserRole_EmptyID(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAdminHandler(service)
+
+	// Route without :id param so c.Param("id") returns ""
+	router := gin.New()
+	router.PUT("/users/update-role", func(c *gin.Context) {
+		c.Set("role", "admin")
+		handler.UpdateUserRole(c)
+	})
+
+	body := UpdateRoleRequest{Role: "viewer"}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/users/update-role", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminHandler_DeactivateUser_EmptyID(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAdminHandler(service)
+
+	// Route without :id param so c.Param("id") returns ""
+	router := gin.New()
+	router.DELETE("/users/deactivate", func(c *gin.Context) {
+		c.Set("role", "admin")
+		c.Set("user_id", "admin-1")
+		handler.DeactivateUser(c)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("DELETE", "/users/deactivate", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminHandler_ReactivateUser_EmptyID(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAdminHandler(service)
+
+	// Route without :id param so c.Param("id") returns ""
+	router := gin.New()
+	router.POST("/users/reactivate-user", func(c *gin.Context) {
+		c.Set("role", "admin")
+		handler.ReactivateUser(c)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/users/reactivate-user", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminHandler_ResetPassword_EmptyID(t *testing.T) {
+	repo := newMockUserRepo()
+	service := application.NewAuthService(repo, "test-secret")
+	handler := NewAdminHandler(service)
+
+	// Route without :id param so c.Param("id") returns ""
+	router := gin.New()
+	router.POST("/users/reset-pass", func(c *gin.Context) {
+		c.Set("role", "admin")
+		handler.ResetPassword(c)
+	})
+
+	body := ResetPasswordRequest{NewPassword: "newpassword123"}
+	jsonBody, _ := json.Marshal(body)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/users/reset-pass", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}

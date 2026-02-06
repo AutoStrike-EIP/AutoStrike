@@ -1192,3 +1192,72 @@ func TestAuthService_CreateUser_RepoError(t *testing.T) {
 		t.Error("Expected error from CreateUser")
 	}
 }
+
+func TestAuthService_ValidateToken_WrongSigningKey(t *testing.T) {
+	service := NewAuthService(newMockUserRepo(), "correct-secret")
+
+	// Create token signed with a different secret
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  "user-1",
+		"role": "admin",
+		"type": "access",
+		"exp":  time.Now().Add(time.Hour).Unix(),
+	})
+	tokenString, _ := token.SignedString([]byte("wrong-secret"))
+
+	_, err := service.ValidateToken(tokenString)
+	if err != ErrInvalidToken {
+		t.Errorf("Expected ErrInvalidToken, got %v", err)
+	}
+}
+
+func TestAuthService_Refresh_MissingSubClaim(t *testing.T) {
+	service := NewAuthService(newMockUserRepo(), "test-secret")
+
+	// Create a refresh token without "sub" claim
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"type": "refresh",
+		"exp":  time.Now().Add(time.Hour).Unix(),
+	})
+	tokenString, _ := token.SignedString([]byte("test-secret"))
+
+	ctx := context.Background()
+	_, err := service.Refresh(ctx, tokenString)
+	if err != ErrInvalidToken {
+		t.Errorf("Expected ErrInvalidToken, got %v", err)
+	}
+}
+
+func TestAuthService_EnsureDefaultAdmin_WithEnvPassword(t *testing.T) {
+	repo := newMockUserRepo()
+	service := NewAuthService(repo, "test-secret")
+
+	t.Setenv("DEFAULT_ADMIN_PASSWORD", "env-password-123")
+
+	ctx := context.Background()
+	result, err := service.EnsureDefaultAdmin(ctx)
+
+	if err != nil {
+		t.Fatalf("EnsureDefaultAdmin failed: %v", err)
+	}
+	if !result.Created {
+		t.Error("Expected Created to be true")
+	}
+	// When password comes from env var, GeneratedPassword should be empty
+	if result.GeneratedPassword != "" {
+		t.Error("Expected GeneratedPassword to be empty when using env var")
+	}
+}
+
+func TestAuthService_EnsureDefaultAdmin_FindAllError(t *testing.T) {
+	repo := newMockUserRepo()
+	repo.findErr = errors.New("database error")
+	service := NewAuthService(repo, "test-secret")
+
+	ctx := context.Background()
+	_, err := service.EnsureDefaultAdmin(ctx)
+
+	if err == nil {
+		t.Error("Expected error from EnsureDefaultAdmin")
+	}
+}

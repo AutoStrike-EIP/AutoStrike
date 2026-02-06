@@ -640,3 +640,104 @@ func TestRequireAnyPermission_AdminHasAll(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 }
+
+func TestNoAuthMiddleware_SetsDefaultContext(t *testing.T) {
+	router := gin.New()
+	router.Use(NoAuthMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		role, _ := c.Get("role")
+		if userID != "anonymous" {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		if role != "admin" {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/test", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAuthMiddleware_LowercaseBearer(t *testing.T) {
+	secret := "test-secret-key"
+	config := &AuthConfig{JWTSecret: secret}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  "user123",
+		"role": "admin",
+		"type": "access",
+		"exp":  time.Now().Add(time.Hour).Unix(),
+	})
+	tokenString, _ := token.SignedString([]byte(secret))
+
+	router := gin.New()
+	router.Use(AuthMiddleware(config))
+	router.GET("/test", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "bearer "+tokenString) // lowercase "bearer"
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 for lowercase 'bearer', got %d", w.Code)
+	}
+}
+
+func TestAuthMiddleware_ExpiredToken(t *testing.T) {
+	secret := "test-secret-key"
+	config := &AuthConfig{JWTSecret: secret}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  "user123",
+		"role": "admin",
+		"type": "access",
+		"exp":  time.Now().Add(-time.Hour).Unix(), // Expired 1 hour ago
+	})
+	tokenString, _ := token.SignedString([]byte(secret))
+
+	router := gin.New()
+	router.Use(AuthMiddleware(config))
+	router.GET("/test", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 for expired token, got %d", w.Code)
+	}
+}
+
+func TestAuthMiddleware_OnlyTokenPrefix(t *testing.T) {
+	config := &AuthConfig{JWTSecret: "secret"}
+
+	router := gin.New()
+	router.Use(AuthMiddleware(config))
+	router.GET("/test", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Token abc123") // Wrong prefix
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 for 'Token' prefix, got %d", w.Code)
+	}
+}

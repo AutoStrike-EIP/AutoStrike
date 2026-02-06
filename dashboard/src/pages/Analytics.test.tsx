@@ -627,3 +627,168 @@ describe('Analytics Blocked/Detected Changes', () => {
     });
   });
 });
+
+describe('Analytics Stable Trend Rendering', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockTrend.mockResolvedValue({ data: mockTrendData });
+    mockSummary.mockResolvedValue({ data: mockSummaryData });
+  });
+
+  it('renders MinusIcon for stable trend (default case of getTrendIcon)', async () => {
+    mockCompare.mockResolvedValue({
+      data: { ...mockComparisonData, score_trend: 'stable', score_change: 0 },
+    });
+
+    const { container } = renderAnalytics();
+
+    await waitFor(() => {
+      expect(screen.getByText('Average Score')).toBeInTheDocument();
+    });
+
+    // The stable trend falls into the default case, rendering a MinusIcon with text-gray-400
+    // Verify that no green (improving) or red (declining) trend icons are present
+    const greenIcons = container.querySelectorAll('.text-green-500');
+    const redIcons = container.querySelectorAll('.text-red-500');
+
+    // Filter to only trend icons in the Average Score card (h-5 w-5 size)
+    const greenTrendIcons = Array.from(greenIcons).filter(
+      (el) => el.classList.contains('h-5') && el.classList.contains('w-5')
+    );
+    const redTrendIcons = Array.from(redIcons).filter(
+      (el) => el.classList.contains('h-5') && el.classList.contains('w-5')
+    );
+
+    expect(greenTrendIcons.length).toBe(0);
+    expect(redTrendIcons.length).toBe(0);
+
+    // Verify the gray MinusIcon is rendered instead
+    const grayIcons = container.querySelectorAll('.text-gray-400.h-5.w-5');
+    expect(grayIcons.length).toBeGreaterThan(0);
+  });
+
+  it('applies text-gray-500 color for stable trend (default case of getTrendColor)', async () => {
+    mockCompare.mockResolvedValue({
+      data: { ...mockComparisonData, score_trend: 'stable', score_change: 0 },
+    });
+
+    renderAnalytics();
+
+    await waitFor(() => {
+      expect(screen.getByText('Average Score')).toBeInTheDocument();
+    });
+
+    // The score change text should have the gray-500 class from getTrendColor default case
+    const scoreChangeText = screen.getByText('0% vs previous period');
+    expect(scoreChangeText).toHaveClass('text-gray-500');
+  });
+
+  it('applies text-green-500 color for improving trend (getTrendColor)', async () => {
+    mockCompare.mockResolvedValue({
+      data: { ...mockComparisonData, score_trend: 'improving', score_change: 13.5 },
+    });
+
+    renderAnalytics();
+
+    await waitFor(() => {
+      expect(screen.getByText('Average Score')).toBeInTheDocument();
+    });
+
+    const scoreChangeText = screen.getByText('+13.5% vs previous period');
+    expect(scoreChangeText).toHaveClass('text-green-500');
+  });
+
+  it('applies text-red-500 color for declining trend (getTrendColor)', async () => {
+    mockCompare.mockResolvedValue({
+      data: { ...mockComparisonData, score_trend: 'declining', score_change: -5.5 },
+    });
+
+    renderAnalytics();
+
+    await waitFor(() => {
+      expect(screen.getByText('Average Score')).toBeInTheDocument();
+    });
+
+    const scoreChangeText = screen.getByText('-5.5% vs previous period');
+    expect(scoreChangeText).toHaveClass('text-red-500');
+  });
+});
+
+describe('Analytics formatScoreChange Edge Cases', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockTrend.mockResolvedValue({ data: mockTrendData });
+    mockSummary.mockResolvedValue({ data: mockSummaryData });
+  });
+
+  it('handles null score_change by displaying 0', async () => {
+    mockCompare.mockResolvedValue({
+      data: {
+        ...mockComparisonData,
+        score_change: null,
+      },
+    });
+
+    renderAnalytics();
+
+    await waitFor(() => {
+      expect(screen.getByText('0% vs previous period')).toBeInTheDocument();
+    });
+  });
+
+  it('handles score_change of exactly 0 by displaying 0 (falsy value path)', async () => {
+    mockCompare.mockResolvedValue({
+      data: {
+        ...mockComparisonData,
+        score_change: 0,
+        score_trend: 'stable',
+      },
+    });
+
+    renderAnalytics();
+
+    await waitFor(() => {
+      // formatScoreChange(0) returns '0' because !0 is true
+      expect(screen.getByText('0% vs previous period')).toBeInTheDocument();
+    });
+  });
+
+  it('renders getTrendIcon default case for undefined trend', async () => {
+    mockCompare.mockResolvedValue({
+      data: {
+        ...mockComparisonData,
+        score_trend: undefined,
+        score_change: 0,
+      },
+    });
+
+    const { container } = renderAnalytics();
+
+    await waitFor(() => {
+      expect(screen.getByText('Average Score')).toBeInTheDocument();
+    });
+
+    // undefined trend falls into the default case, same as 'stable'
+    const grayIcons = container.querySelectorAll('.text-gray-400.h-5.w-5');
+    expect(grayIcons.length).toBeGreaterThan(0);
+  });
+
+  it('renders getTrendColor default case for undefined trend', async () => {
+    mockCompare.mockResolvedValue({
+      data: {
+        ...mockComparisonData,
+        score_trend: undefined,
+        score_change: 0,
+      },
+    });
+
+    renderAnalytics();
+
+    await waitFor(() => {
+      expect(screen.getByText('Average Score')).toBeInTheDocument();
+    });
+
+    const scoreChangeText = screen.getByText('0% vs previous period');
+    expect(scoreChangeText).toHaveClass('text-gray-500');
+  });
+});

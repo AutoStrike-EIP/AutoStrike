@@ -850,6 +850,56 @@ describe('Scenarios Import/Export', () => {
       });
     });
   });
+
+  it('uses provided version from export format', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+    vi.mocked(scenarioApi.import).mockResolvedValue({
+      data: {
+        imported: 1,
+        failed: 0,
+        scenarios: [],
+      },
+    } as never);
+
+    renderWithClient(<Scenarios />);
+
+    await screen.findByText('Scenarios');
+    fireEvent.click(screen.getByText('Import'));
+
+    // Export format with explicit version
+    const file = new File(
+      [JSON.stringify({ version: '2.0', scenarios: [{ name: 'Versioned', phases: [], tags: ['v2'] }] })],
+      'test.json',
+      { type: 'application/json' }
+    );
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(scenarioApi.import).toHaveBeenCalledWith({
+        version: '2.0',
+        scenarios: [{ name: 'Versioned', phases: [], tags: ['v2'] }],
+      });
+    });
+  });
+
+  it('does nothing when file input change fires with no file selected', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+
+    renderWithClient(<Scenarios />);
+
+    await screen.findByText('Scenarios');
+    fireEvent.click(screen.getByText('Import'));
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    // Fire change event with no files
+    fireEvent.change(input, { target: { files: [] } });
+
+    // No toast error and no import call
+    expect(scenarioApi.import).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
 });
 
 describe('Scenarios Create Modal', () => {

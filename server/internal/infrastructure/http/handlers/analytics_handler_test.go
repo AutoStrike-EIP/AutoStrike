@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -617,5 +618,424 @@ func TestAnalyticsHandler_GetExecutionSummary_DaysOutOfRange(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+// mockErrorResultRepoForHandler implements repository.ResultRepository and always returns errors
+type mockErrorResultRepoForHandler struct {
+	err error
+}
+
+func (m *mockErrorResultRepoForHandler) CreateExecution(ctx context.Context, execution *entity.Execution) error {
+	return m.err
+}
+func (m *mockErrorResultRepoForHandler) UpdateExecution(ctx context.Context, execution *entity.Execution) error {
+	return m.err
+}
+func (m *mockErrorResultRepoForHandler) FindExecutionByID(ctx context.Context, id string) (*entity.Execution, error) {
+	return nil, m.err
+}
+func (m *mockErrorResultRepoForHandler) FindExecutionsByScenario(ctx context.Context, scenarioID string) ([]*entity.Execution, error) {
+	return nil, m.err
+}
+func (m *mockErrorResultRepoForHandler) FindRecentExecutions(ctx context.Context, limit int) ([]*entity.Execution, error) {
+	return nil, m.err
+}
+func (m *mockErrorResultRepoForHandler) FindExecutionsByDateRange(ctx context.Context, start, end time.Time) ([]*entity.Execution, error) {
+	return nil, m.err
+}
+func (m *mockErrorResultRepoForHandler) FindCompletedExecutionsByDateRange(ctx context.Context, start, end time.Time) ([]*entity.Execution, error) {
+	return nil, m.err
+}
+func (m *mockErrorResultRepoForHandler) CreateResult(ctx context.Context, result *entity.ExecutionResult) error {
+	return m.err
+}
+func (m *mockErrorResultRepoForHandler) UpdateResult(ctx context.Context, result *entity.ExecutionResult) error {
+	return m.err
+}
+func (m *mockErrorResultRepoForHandler) FindResultByID(ctx context.Context, id string) (*entity.ExecutionResult, error) {
+	return nil, m.err
+}
+func (m *mockErrorResultRepoForHandler) FindResultsByExecution(ctx context.Context, executionID string) ([]*entity.ExecutionResult, error) {
+	return nil, m.err
+}
+func (m *mockErrorResultRepoForHandler) FindResultsByTechnique(ctx context.Context, techniqueID string) ([]*entity.ExecutionResult, error) {
+	return nil, m.err
+}
+
+// --- Service error path tests ---
+
+func TestAnalyticsHandler_CompareScores_ServiceError(t *testing.T) {
+	repo := &mockErrorResultRepoForHandler{err: errors.New("database connection failed")}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/compare", withAuthAnalytics(handler.CompareScores))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/compare", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "failed to compare scores" {
+		t.Errorf("Expected error 'failed to compare scores', got %q", response["error"])
+	}
+}
+
+func TestAnalyticsHandler_GetScoreTrend_ServiceError(t *testing.T) {
+	repo := &mockErrorResultRepoForHandler{err: errors.New("database connection failed")}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/trend", withAuthAnalytics(handler.GetScoreTrend))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/trend", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "failed to get score trend" {
+		t.Errorf("Expected error 'failed to get score trend', got %q", response["error"])
+	}
+}
+
+func TestAnalyticsHandler_GetExecutionSummary_ServiceError(t *testing.T) {
+	repo := &mockErrorResultRepoForHandler{err: errors.New("database connection failed")}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/summary", withAuthAnalytics(handler.GetExecutionSummary))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/summary", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "failed to get execution summary" {
+		t.Errorf("Expected error 'failed to get execution summary', got %q", response["error"])
+	}
+}
+
+func TestAnalyticsHandler_GetPeriodStats_ServiceError(t *testing.T) {
+	repo := &mockErrorResultRepoForHandler{err: errors.New("database connection failed")}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/period", withAuthAnalytics(handler.GetPeriodStats))
+
+	now := time.Now()
+	start := url.QueryEscape(now.AddDate(0, 0, -7).Format(time.RFC3339))
+	end := url.QueryEscape(now.Format(time.RFC3339))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/period?start="+start+"&end="+end, nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "failed to get period stats" {
+		t.Errorf("Expected error 'failed to get period stats', got %q", response["error"])
+	}
+}
+
+// --- Invalid query param edge cases ---
+
+func TestAnalyticsHandler_GetPeriodStats_BothDatesMissing(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/period", withAuthAnalytics(handler.GetPeriodStats))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/period", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "start and end dates are required" {
+		t.Errorf("Expected error 'start and end dates are required', got %q", response["error"])
+	}
+}
+
+func TestAnalyticsHandler_CompareScores_DaysZero(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/compare", withAuthAnalytics(handler.CompareScores))
+
+	// days=0 should fall back to default (d > 0 check fails)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/compare?days=0", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetScoreTrend_DaysZero(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/trend", withAuthAnalytics(handler.GetScoreTrend))
+
+	// days=0 should fall back to default (d > 0 check fails)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/trend?days=0", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetExecutionSummary_DaysZero(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/summary", withAuthAnalytics(handler.GetExecutionSummary))
+
+	// days=0 should fall back to default (d > 0 check fails)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/summary?days=0", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_CompareScores_DaysExactly365(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/compare", withAuthAnalytics(handler.CompareScores))
+
+	// days=365 is exactly at the boundary (d <= 365), should be accepted
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/compare?days=365", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetScoreTrend_DaysExactly365(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/trend", withAuthAnalytics(handler.GetScoreTrend))
+
+	// days=365 is exactly at the boundary (d <= 365), should be accepted
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/trend?days=365", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	var response application.ScoreTrend
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	// 365 doesn't match 30 or 90, so it falls through to "7d" in periodLabel
+	if response.Period != "7d" {
+		t.Errorf("Period = %q, want '7d'", response.Period)
+	}
+}
+
+func TestAnalyticsHandler_GetExecutionSummary_NegativeDays(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/summary", withAuthAnalytics(handler.GetExecutionSummary))
+
+	// Negative days should fall back to default (d > 0 check fails)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/summary?days=-10", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetPeriodStats_StartDateNotRFC3339(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/period", withAuthAnalytics(handler.GetPeriodStats))
+
+	// Use a date format that is valid but not RFC3339 (e.g., "2025-01-01")
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/period?start=2025-01-01&end="+url.QueryEscape(time.Now().Format(time.RFC3339)), nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "invalid start date format" {
+		t.Errorf("Expected error 'invalid start date format', got %q", response["error"])
+	}
+}
+
+func TestAnalyticsHandler_GetPeriodStats_EndDateNotRFC3339(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/period", withAuthAnalytics(handler.GetPeriodStats))
+
+	// Valid start, but end is not RFC3339
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/period?start="+url.QueryEscape(time.Now().Format(time.RFC3339))+"&end=2025-12-31", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "invalid end date format" {
+		t.Errorf("Expected error 'invalid end date format', got %q", response["error"])
+	}
+}
+
+func TestAnalyticsHandler_GetPeriodStats_SameDates(t *testing.T) {
+	repo := &mockResultRepoForHandler{}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/period", withAuthAnalytics(handler.GetPeriodStats))
+
+	// Same start and end date - end is not before start so should succeed
+	now := time.Now()
+	dateStr := url.QueryEscape(now.Format(time.RFC3339))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/period?start="+dateStr+"&end="+dateStr, nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAnalyticsHandler_CompareScores_ServiceErrorWithCustomDays(t *testing.T) {
+	repo := &mockErrorResultRepoForHandler{err: errors.New("database timeout")}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/compare", withAuthAnalytics(handler.CompareScores))
+
+	// Service error even with valid custom days
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/compare?days=14", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetScoreTrend_ServiceErrorWithCustomDays(t *testing.T) {
+	repo := &mockErrorResultRepoForHandler{err: errors.New("database timeout")}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/trend", withAuthAnalytics(handler.GetScoreTrend))
+
+	// Service error even with valid custom days
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/trend?days=14", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestAnalyticsHandler_GetExecutionSummary_ServiceErrorWithCustomDays(t *testing.T) {
+	repo := &mockErrorResultRepoForHandler{err: errors.New("database timeout")}
+	svc := application.NewAnalyticsService(repo)
+	handler := NewAnalyticsHandler(svc)
+
+	router := gin.New()
+	router.GET("/summary", withAuthAnalytics(handler.GetExecutionSummary))
+
+	// Service error even with valid custom days
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/summary?days=14", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
 	}
 }

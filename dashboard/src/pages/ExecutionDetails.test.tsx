@@ -412,4 +412,77 @@ describe('ExecutionDetails Page', () => {
     expect(screen.getByText('T1016')).toBeInTheDocument();
     expect(screen.getByText('T1059')).toBeInTheDocument();
   });
+
+  it('renders result with unknown status using default badge and raw label', async () => {
+    const mockExecution = {
+      id: 'exec-unknown-result',
+      scenario_id: 'unknown-scenario',
+      status: 'completed',
+      started_at: '2024-01-15T10:00:00Z',
+      safe_mode: true,
+      score: { overall: 0, blocked: 0, detected: 0, successful: 0, total: 1 },
+    };
+
+    const mockResults = [
+      {
+        id: 'result-unknown',
+        execution_id: 'exec-unknown-result',
+        technique_id: 'T1082',
+        agent_paw: 'agent-1',
+        status: 'unknown_status',
+        output: '',
+        detected: false,
+        start_time: '2024-01-15T10:00:00Z',
+        end_time: '2024-01-15T10:01:00Z',
+      },
+    ];
+
+    vi.mocked(executionApi.get).mockResolvedValue({ data: mockExecution } as never);
+    vi.mocked(executionApi.getResults).mockResolvedValue({ data: mockResults } as never);
+
+    renderWithRouter('exec-unknown-result');
+
+    // getStatusLabel default case returns the raw status string
+    expect(await screen.findByText('unknown_status')).toBeInTheDocument();
+  });
+
+  it('renders execution with unknown status using default badge', async () => {
+    const mockExecution = {
+      id: 'exec-unknown-exec',
+      scenario_id: 'unknown-exec-scenario',
+      status: 'some_unrecognized_status',
+      started_at: '2024-01-15T10:00:00Z',
+      safe_mode: true,
+    };
+
+    vi.mocked(executionApi.get).mockResolvedValue({ data: mockExecution } as never);
+    vi.mocked(executionApi.getResults).mockResolvedValue({ data: [] } as never);
+
+    renderWithRouter('exec-unknown-exec');
+
+    // getExecutionStatusBadge default case applies the gray fallback badge
+    const badge = await screen.findByText('some_unrecognized_status');
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain('bg-gray-100');
+  });
+
+  it('renders execution with failed status using danger badge', async () => {
+    const mockExecution = {
+      id: 'exec-failed-status',
+      scenario_id: 'failed-exec-scenario',
+      status: 'failed',
+      started_at: '2024-01-15T10:00:00Z',
+      safe_mode: true,
+    };
+
+    vi.mocked(executionApi.get).mockResolvedValue({ data: mockExecution } as never);
+    vi.mocked(executionApi.getResults).mockResolvedValue({ data: [] } as never);
+
+    renderWithRouter('exec-failed-status');
+
+    // getExecutionStatusBadge 'failed' case returns 'badge-danger'
+    const badge = await screen.findByText('failed');
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain('badge-danger');
+  });
 });

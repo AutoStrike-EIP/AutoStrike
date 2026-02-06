@@ -126,4 +126,53 @@ describe('CoverageReport', () => {
 
     expect(screen.getByText('1 technique')).toBeInTheDocument();
   });
+
+  it('uses fallback color for unknown tactic', () => {
+    const coverage = { unknown_tactic: 3 };
+    const { container } = render(<CoverageReport coverage={coverage} totalTechniques={3} />);
+
+    // Unknown tactic should use gray fallback
+    expect(container.querySelector('.bg-gray-500')).toBeInTheDocument();
+  });
+
+  it('handles detailed variant with zero total correctly', () => {
+    // total (sum of coverage values) is 0 when coverage has entries with 0
+    const coverage = { discovery: 0 };
+    render(<CoverageReport coverage={coverage} totalTechniques={0} variant="detailed" />);
+
+    // Percentage should be 0.0% when total is 0
+    expect(screen.getByText('0.0%')).toBeInTheDocument();
+  });
+
+  it('applies custom className to empty state', () => {
+    const { container } = render(
+      <CoverageReport coverage={{}} totalTechniques={0} className="custom-empty" />
+    );
+
+    expect(container.firstChild).toHaveClass('custom-empty');
+  });
+
+  it('uses fallback color for unknown tactic in detailed variant', () => {
+    const coverage = { unknown_tactic: 5 };
+    const { container } = render(
+      <CoverageReport coverage={coverage} totalTechniques={5} variant="detailed" />
+    );
+
+    // Unknown tactic should use gray fallback in the detailed card
+    expect(container.querySelector('.bg-gray-500')).toBeInTheDocument();
+    // Should show percentage
+    expect(screen.getByText('100.0%')).toBeInTheDocument();
+    expect(screen.getByText('5 techniques')).toBeInTheDocument();
+  });
+
+  it('handles hyphenated tactic names through normalization', () => {
+    const coverage = { 'defense-evasion': 3 };
+    const { container } = render(
+      <CoverageReport coverage={coverage} totalTechniques={3} />
+    );
+
+    // Hyphenated tactic should be normalized to underscore and matched to green color
+    expect(container.querySelector('.bg-green-500')).toBeInTheDocument();
+    expect(screen.getByText('defense evasion')).toBeInTheDocument();
+  });
 });

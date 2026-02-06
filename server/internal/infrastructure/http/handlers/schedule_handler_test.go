@@ -956,3 +956,353 @@ func TestScheduleHandler_Create_CronFrequency_InvalidExpr(t *testing.T) {
 		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
 	}
 }
+
+// --- mockFailingScenarioRepo always returns an error from FindByID ---
+type mockFailingScenarioRepo struct{}
+
+func (m *mockFailingScenarioRepo) Create(_ context.Context, _ *entity.Scenario) error   { return nil }
+func (m *mockFailingScenarioRepo) Update(_ context.Context, _ *entity.Scenario) error   { return nil }
+func (m *mockFailingScenarioRepo) Delete(_ context.Context, _ string) error              { return nil }
+func (m *mockFailingScenarioRepo) FindByID(_ context.Context, _ string) (*entity.Scenario, error) {
+	return nil, errors.New("scenario not found")
+}
+func (m *mockFailingScenarioRepo) FindAll(_ context.Context) ([]*entity.Scenario, error) {
+	return nil, nil
+}
+func (m *mockFailingScenarioRepo) FindByTag(_ context.Context, _ string) ([]*entity.Scenario, error) {
+	return nil, nil
+}
+func (m *mockFailingScenarioRepo) ImportFromYAML(_ context.Context, _ string) error { return nil }
+
+// setupScheduleHandlerWithExecService creates a handler with a real ScheduleService
+// that has an ExecutionService backed by a failing scenario repo. This allows
+// RunNow to be tested: the execution will fail (scenario not found) but the
+// run record is still saved, so the handler returns 200 OK.
+func setupScheduleHandlerWithExecService(repo *mockScheduleRepo) (*ScheduleHandler, *gin.Engine) {
+	gin.SetMode(gin.TestMode)
+	logger := zap.NewNop()
+
+	execService := application.NewExecutionService(nil, &mockFailingScenarioRepo{}, nil, nil, nil, nil)
+	service := application.NewScheduleService(repo, execService, logger)
+	handler := NewScheduleHandler(service)
+
+	router := gin.New()
+	api := router.Group("/api/v1")
+	api.Use(func(c *gin.Context) {
+		c.Set("user_id", "test-user")
+		c.Next()
+	})
+	handler.RegisterRoutes(api)
+
+	return handler, router
+}
+
+// ---------------------------------------------------------------
+// RunNow - additional coverage
+// ---------------------------------------------------------------
+
+func TestScheduleHandler_RunNow_Success(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
+		ID:         "sched-1",
+		Name:       "Run Now Test",
+		ScenarioID: "scenario-1",
+		Status:     entity.ScheduleStatusActive,
+	}
+	_, router := setupScheduleHandlerWithExecService(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/run", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d. Body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var run entity.ScheduleRun
+	if err := json.Unmarshal(w.Body.Bytes(), &run); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// Execution failed (scenario repo error), so the run should be marked as failed
+	if run.Status != "failed" {
+		t.Errorf("run.Status = %q, want %q", run.Status, "failed")
+	}
+	if run.ScheduleID != "sched-1" {
+		t.Errorf("run.ScheduleID = %q, want %q", run.ScheduleID, "sched-1")
+	}
+}
+
+func TestScheduleHandler_RunNow_FindError(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.findErr = errors.New("database error")
+	_, router := setupRealScheduleHandler(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/run", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestScheduleHandler_RunNow_CreateRunError(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
+		ID:         "sched-1",
+		Name:       "Run Now Test",
+		ScenarioID: "scenario-1",
+		Status:     entity.ScheduleStatusActive,
+	}
+	repo.createRunErr = errors.New("failed to save run")
+	_, router := setupScheduleHandlerWithExecService(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/run", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+// ---------------------------------------------------------------
+// Pause - additional error paths
+// ---------------------------------------------------------------
+
+func TestScheduleHandler_Pause_FindError(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.findErr = errors.New("database error")
+	_, router := setupRealScheduleHandler(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/pause", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestScheduleHandler_Pause_UpdateError(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
+		ID:     "sched-1",
+		Status: entity.ScheduleStatusActive,
+	}
+	repo.updateErr = errors.New("update failed")
+	_, router := setupRealScheduleHandler(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/pause", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+// ---------------------------------------------------------------
+// Resume - additional error paths
+// ---------------------------------------------------------------
+
+func TestScheduleHandler_Resume_FindError(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.findErr = errors.New("database error")
+	_, router := setupRealScheduleHandler(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/resume", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestScheduleHandler_Resume_UpdateError(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
+		ID:     "sched-1",
+		Status: entity.ScheduleStatusPaused,
+	}
+	repo.updateErr = errors.New("update failed")
+	_, router := setupRealScheduleHandler(repo)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schedules/sched-1/resume", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+// ---------------------------------------------------------------
+// Update - additional error paths
+// ---------------------------------------------------------------
+
+func TestScheduleHandler_Update_FindError(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.findErr = errors.New("database error")
+	_, router := setupRealScheduleHandler(repo)
+
+	body := CreateScheduleRequest{
+		Name:       "Updated Name",
+		ScenarioID: "scenario-1",
+		Frequency:  "daily",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/schedules/sched-1", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestScheduleHandler_Update_UpdateError(t *testing.T) {
+	repo := newMockScheduleRepo()
+	repo.schedules["sched-1"] = &entity.Schedule{
+		ID:     "sched-1",
+		Name:   "Old Name",
+		Status: entity.ScheduleStatusActive,
+	}
+	repo.updateErr = errors.New("update failed")
+	_, router := setupRealScheduleHandler(repo)
+
+	body := CreateScheduleRequest{
+		Name:       "Updated Name",
+		ScenarioID: "scenario-1",
+		Frequency:  "daily",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/schedules/sched-1", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+// ---------------------------------------------------------------
+// GetRuns - limit edge cases
+// ---------------------------------------------------------------
+
+func TestScheduleHandler_GetRuns_LimitZero(t *testing.T) {
+	repo := newMockScheduleRepo()
+	for i := 0; i < 5; i++ {
+		repo.runs["sched-1"] = append(repo.runs["sched-1"], &entity.ScheduleRun{
+			ID:         "run-" + string(rune('1'+i)),
+			ScheduleID: "sched-1",
+		})
+	}
+	_, router := setupRealScheduleHandler(repo)
+
+	// limit=0 is not > 0, so the handler should use the default of 20
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1/runs?limit=0", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var runs []*entity.ScheduleRun
+	if err := json.Unmarshal(w.Body.Bytes(), &runs); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// All 5 runs should be returned (default limit 20 > 5)
+	if len(runs) != 5 {
+		t.Errorf("len(runs) = %d, want 5", len(runs))
+	}
+}
+
+func TestScheduleHandler_GetRuns_LimitNegative(t *testing.T) {
+	repo := newMockScheduleRepo()
+	for i := 0; i < 3; i++ {
+		repo.runs["sched-1"] = append(repo.runs["sched-1"], &entity.ScheduleRun{
+			ID:         "run-" + string(rune('1'+i)),
+			ScheduleID: "sched-1",
+		})
+	}
+	_, router := setupRealScheduleHandler(repo)
+
+	// limit=-1 is not > 0, so the handler should use the default of 20
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1/runs?limit=-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var runs []*entity.ScheduleRun
+	if err := json.Unmarshal(w.Body.Bytes(), &runs); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// All 3 runs should be returned (default limit 20 > 3)
+	if len(runs) != 3 {
+		t.Errorf("len(runs) = %d, want 3", len(runs))
+	}
+}
+
+func TestScheduleHandler_GetRuns_LimitExceedsMax(t *testing.T) {
+	repo := newMockScheduleRepo()
+	for i := 0; i < 3; i++ {
+		repo.runs["sched-1"] = append(repo.runs["sched-1"], &entity.ScheduleRun{
+			ID:         "run-" + string(rune('1'+i)),
+			ScheduleID: "sched-1",
+		})
+	}
+	_, router := setupRealScheduleHandler(repo)
+
+	// limit=200 exceeds max of 100, so the handler should use the default of 20
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schedules/sched-1/runs?limit=200", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var runs []*entity.ScheduleRun
+	if err := json.Unmarshal(w.Body.Bytes(), &runs); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// All 3 runs should be returned (default limit 20 > 3)
+	if len(runs) != 3 {
+		t.Errorf("len(runs) = %d, want 3", len(runs))
+	}
+}
+
+// ---------------------------------------------------------------
+// Delete - additional coverage
+// ---------------------------------------------------------------
+
+func TestScheduleHandler_Delete_NotFound_Succeeds(t *testing.T) {
+	// Delete with a nonexistent ID does not trigger a "not found" error
+	// because the Delete handler calls scheduleService.Delete which calls
+	// repo.Delete directly without checking existence first.
+	// If repo.Delete returns nil for a missing ID, the handler returns 200.
+	repo := newMockScheduleRepo()
+	_, router := setupRealScheduleHandler(repo)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/schedules/nonexistent", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+	}
+}

@@ -463,4 +463,33 @@ describe('RunExecutionModal', () => {
     // Warning should disappear
     expect(screen.queryByText(/Please select at least one agent/)).not.toBeInTheDocument();
   });
+
+  it('hides Select All button when no online agents available', async () => {
+    const offlineOnlyAgents = mockAgents.map(a => ({ ...a, status: 'offline' }));
+    vi.mocked(api.get).mockResolvedValue({ data: offlineOnlyAgents } as never);
+
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByText(/No online agents available/)).toBeInTheDocument();
+    });
+
+    // Select All button should not appear
+    expect(screen.queryByText('Select All')).not.toBeInTheDocument();
+    expect(screen.queryByText('Deselect All')).not.toBeInTheDocument();
+  });
+
+  it('handles API returning empty agents array', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] } as never);
+
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByText(/No online agents available/)).toBeInTheDocument();
+    });
+
+    // Run button should be disabled
+    const runButton = screen.getByRole('button', { name: /Run on 0 agents/i });
+    expect(runButton).toBeDisabled();
+  });
 });

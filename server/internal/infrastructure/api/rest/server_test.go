@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -1047,3 +1048,525 @@ func (m *mockUserRepo) CountByRole(ctx context.Context, role entity.UserRole) (i
 	return 0, nil
 }
 func (m *mockUserRepo) DeactivateAdminIfNotLast(ctx context.Context, id string) error { return nil }
+
+// --- Helper to create standard test services ---
+func createTestServices(t *testing.T) *Services {
+	t.Helper()
+	return &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:      nil,
+	}
+}
+
+func createTestServicesWithAuth(t *testing.T) *Services {
+	t.Helper()
+	s := createTestServices(t)
+	s.Auth = application.NewAuthService(&mockUserRepo{}, "test-jwt-secret-key")
+	return s
+}
+
+// --- Middleware Order Tests ---
+
+func TestServer_MiddlewareOrder_LoggingAndRecovery(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServices(t)
+
+	config := &ServerConfig{EnableAuth: false}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	// A normal request should go through logging + recovery middleware without issues
+	req, _ := http.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 through middleware chain, got %d", w.Code)
+	}
+}
+
+func TestServer_MiddlewareOrder_AuthBeforeHandlers(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServicesWithAuth(t)
+
+	config := &ServerConfig{
+		EnableAuth: true,
+		JWTSecret:  "test-jwt-secret-key",
+	}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	// Without auth header, API should return 401 (auth middleware runs before handler)
+	req, _ := http.NewRequest("GET", "/api/v1/agents", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 when auth middleware runs before handler, got %d", w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if response["error"] != "authorization header required" {
+		t.Errorf("Expected auth error message, got %v", response["error"])
+	}
+}
+
+func TestServer_MiddlewareOrder_InvalidBearerToken(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServicesWithAuth(t)
+
+	config := &ServerConfig{
+		EnableAuth: true,
+		JWTSecret:  "test-jwt-secret-key",
+	}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	// With invalid bearer token format
+	req, _ := http.NewRequest("GET", "/api/v1/agents", nil)
+	req.Header.Set("Authorization", "InvalidFormat")
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 for invalid bearer format, got %d", w.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if response["error"] != "invalid authorization header format" {
+		t.Errorf("Expected invalid format error, got %v", response["error"])
+	}
+}
+
+func TestServer_MiddlewareOrder_NoAuthSetsDefaultContext(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServices(t)
+
+	config := &ServerConfig{EnableAuth: false}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	// Without auth, NoAuthMiddleware should set default user context (anonymous/admin)
+	// so API requests should succeed
+	req, _ := http.NewRequest("GET", "/api/v1/agents", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 with NoAuth middleware, got %d", w.Code)
+	}
+}
+
+func TestServer_MiddlewareOrder_HealthBypassesAuth(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServicesWithAuth(t)
+
+	config := &ServerConfig{
+		EnableAuth: true,
+		JWTSecret:  "test-jwt-secret-key",
+	}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	// Health endpoint should be accessible without authentication
+	req, _ := http.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected health endpoint to bypass auth with status 200, got %d", w.Code)
+	}
+}
+
+// --- CORS Headers Tests ---
+
+func TestServer_ResponseHeaders_ContentType(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServices(t)
+
+	config := &ServerConfig{EnableAuth: false}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	req, _ := http.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	contentType := w.Header().Get("Content-Type")
+	if contentType == "" {
+		t.Error("Expected Content-Type header to be set")
+	}
+	if !strings.Contains(contentType, "application/json") {
+		t.Errorf("Expected Content-Type to contain 'application/json', got '%s'", contentType)
+	}
+}
+
+func TestServer_ResponseHeaders_APIEndpoint(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServices(t)
+
+	config := &ServerConfig{EnableAuth: false}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	req, _ := http.NewRequest("GET", "/api/v1/agents", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	contentType := w.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		t.Errorf("Expected JSON Content-Type for API endpoint, got '%s'", contentType)
+	}
+}
+
+// --- Auth Service Integration Tests ---
+
+func TestServer_WithAuthService_RegistersAuthRoutes(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServicesWithAuth(t)
+
+	config := &ServerConfig{
+		EnableAuth: true,
+		JWTSecret:  "test-jwt-secret-key",
+	}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	routes := server.Router().Routes()
+	expectedAuthRoutes := []string{
+		"/api/v1/auth/login",
+		"/api/v1/auth/refresh",
+		"/api/v1/auth/logout",
+	}
+
+	for _, expected := range expectedAuthRoutes {
+		found := false
+		for _, route := range routes {
+			if route.Path == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected auth route %s not found", expected)
+		}
+	}
+}
+
+func TestServer_WithAuthService_RegistersAdminRoutes(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServicesWithAuth(t)
+
+	config := &ServerConfig{
+		EnableAuth: true,
+		JWTSecret:  "test-jwt-secret-key",
+	}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	routes := server.Router().Routes()
+	expectedAdminRoutes := []string{
+		"/api/v1/admin/users",
+		"/api/v1/admin/users/:id",
+	}
+
+	for _, expected := range expectedAdminRoutes {
+		found := false
+		for _, route := range routes {
+			if route.Path == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected admin route %s not found", expected)
+		}
+	}
+}
+
+func TestServer_WithAuthService_RegistersProtectedMeRoute(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServicesWithAuth(t)
+
+	config := &ServerConfig{
+		EnableAuth: true,
+		JWTSecret:  "test-jwt-secret-key",
+	}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	routes := server.Router().Routes()
+	found := false
+	for _, route := range routes {
+		if route.Path == "/api/v1/auth/me" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Expected protected /api/v1/auth/me route not found")
+	}
+}
+
+func TestServer_WithAuthService_LoginEndpointAccessible(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServicesWithAuth(t)
+
+	config := &ServerConfig{
+		EnableAuth: true,
+		JWTSecret:  "test-jwt-secret-key",
+	}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	// Login endpoint should be accessible without auth (it's a public route)
+	req, _ := http.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"username":"test","password":"test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	// Should not return 401 (the route itself may return 401 for bad credentials,
+	// but NOT because of middleware blocking)
+	if w.Code == http.StatusNotFound {
+		t.Error("Login endpoint should exist and not return 404")
+	}
+}
+
+func TestServer_WithAuthService_AdminRoutesRequireAuth(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServicesWithAuth(t)
+
+	config := &ServerConfig{
+		EnableAuth: true,
+		JWTSecret:  "test-jwt-secret-key",
+	}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	// Admin endpoint without auth should return 401
+	req, _ := http.NewRequest("GET", "/api/v1/admin/users", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected 401 for admin route without auth, got %d", w.Code)
+	}
+}
+
+// --- NoRoute / SPA Fallback Edge Cases ---
+
+func TestServer_NoRoute_MultiplePrefixes(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServices(t)
+
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(tmpDir+"/index.html", []byte("<html>SPA</html>"), 0644); err != nil {
+		t.Fatalf("Failed to write index.html: %v", err)
+	}
+	if err := os.MkdirAll(tmpDir+"/assets", 0755); err != nil {
+		t.Fatalf("Failed to create assets dir: %v", err)
+	}
+
+	config := &ServerConfig{
+		EnableAuth:    false,
+		DashboardPath: tmpDir,
+	}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	tests := []struct {
+		name           string
+		path           string
+		expectStatus   int
+		expectSPABody  bool
+	}{
+		{"API path returns 404 JSON", "/api/v1/unknown", http.StatusNotFound, false},
+		{"WS path returns 404 JSON", "/ws/unknown", http.StatusNotFound, false},
+		{"SPA route serves index", "/dashboard", http.StatusOK, true},
+		{"Nested SPA route serves index", "/settings/profile", http.StatusOK, true},
+		{"Root-level SPA route", "/login", http.StatusOK, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", tt.path, nil)
+			w := httptest.NewRecorder()
+			server.Router().ServeHTTP(w, req)
+
+			if w.Code != tt.expectStatus {
+				t.Errorf("Expected status %d for path %s, got %d", tt.expectStatus, tt.path, w.Code)
+			}
+			if tt.expectSPABody && w.Body.String() != "<html>SPA</html>" {
+				t.Errorf("Expected SPA body for path %s, got '%s'", tt.path, w.Body.String())
+			}
+		})
+	}
+}
+
+// --- Config Edge Cases ---
+
+func TestNewServerConfig_EnableAuthFalseOverridesSecret(t *testing.T) {
+	os.Setenv("JWT_SECRET", "some-secret")
+	os.Setenv("ENABLE_AUTH", "false")
+	defer func() {
+		os.Unsetenv("JWT_SECRET")
+		os.Unsetenv("ENABLE_AUTH")
+	}()
+
+	config := NewServerConfig()
+
+	// ENABLE_AUTH=false should override even when JWT_SECRET is set
+	if config.EnableAuth {
+		t.Error("Expected EnableAuth to be false when ENABLE_AUTH=false, even with JWT_SECRET set")
+	}
+	if config.JWTSecret != "some-secret" {
+		t.Errorf("JWTSecret should still be set to 'some-secret', got '%s'", config.JWTSecret)
+	}
+}
+
+func TestNewServerConfig_EnableAuthInvalidValue(t *testing.T) {
+	os.Unsetenv("JWT_SECRET")
+	os.Setenv("ENABLE_AUTH", "maybe")
+	defer os.Unsetenv("ENABLE_AUTH")
+
+	config := NewServerConfig()
+
+	// Invalid ENABLE_AUTH value should not change the default behavior
+	// (default: auth disabled when JWT_SECRET is not set)
+	if config.EnableAuth {
+		t.Error("Expected EnableAuth to be false when ENABLE_AUTH has invalid value and no JWT_SECRET")
+	}
+}
+
+func TestNewServerConfig_EnableAuthInvalidValueWithSecret(t *testing.T) {
+	os.Setenv("JWT_SECRET", "my-secret")
+	os.Setenv("ENABLE_AUTH", "maybe")
+	defer func() {
+		os.Unsetenv("JWT_SECRET")
+		os.Unsetenv("ENABLE_AUTH")
+	}()
+
+	config := NewServerConfig()
+
+	// Invalid ENABLE_AUTH should not override the JWT_SECRET-based default (true)
+	if !config.EnableAuth {
+		t.Error("Expected EnableAuth to be true when JWT_SECRET is set and ENABLE_AUTH is invalid")
+	}
+}
+
+// --- Multiple Services Integration ---
+
+func TestServer_AllServicesNil_ExceptRequired(t *testing.T) {
+	logger := zap.NewNop()
+	services := &Services{
+		Agent:     application.NewAgentService(&mockAgentRepo{}),
+		Scenario:  application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique: application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution: application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		// All optional services nil
+		Auth:         nil,
+		Analytics:    nil,
+		Notification: nil,
+		Schedule:     nil,
+	}
+
+	config := &ServerConfig{EnableAuth: false}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	if server == nil {
+		t.Fatal("Server should be created with optional services set to nil")
+	}
+
+	// Verify optional routes are not registered
+	routes := server.Router().Routes()
+	for _, route := range routes {
+		if strings.Contains(route.Path, "/analytics/") {
+			t.Error("Analytics routes should not be registered when analytics service is nil")
+		}
+		if strings.Contains(route.Path, "/schedules") && route.Path != "" {
+			t.Error("Schedule routes should not be registered when schedule service is nil")
+		}
+		if strings.Contains(route.Path, "/notifications") {
+			t.Error("Notification routes should not be registered when notification service is nil")
+		}
+		if strings.Contains(route.Path, "/admin/") {
+			t.Error("Admin routes should not be registered when auth service is nil")
+		}
+	}
+}
+
+func TestServer_AllServicesProvided(t *testing.T) {
+	logger := zap.NewNop()
+	hub := websocket.NewHub(logger)
+
+	scheduleService := application.NewScheduleService(&mockScheduleRepo{}, nil, logger)
+	notificationService := application.NewNotificationService(&mockNotificationRepo{}, &mockUserRepo{}, nil, "https://localhost:8443", nil)
+
+	services := &Services{
+		Agent:        application.NewAgentService(&mockAgentRepo{}),
+		Scenario:     application.NewScenarioService(&mockScenarioRepo{}, &mockTechniqueRepo{}, service.NewTechniqueValidator()),
+		Technique:    application.NewTechniqueService(&mockTechniqueRepo{}),
+		Execution:    application.NewExecutionService(&mockResultRepo{}, &mockScenarioRepo{}, &mockTechniqueRepo{}, &mockAgentRepo{}, nil, nil),
+		Auth:         application.NewAuthService(&mockUserRepo{}, "full-service-secret"),
+		Analytics:    application.NewAnalyticsService(&mockResultRepo{}),
+		Notification: notificationService,
+		Schedule:     scheduleService,
+	}
+
+	config := &ServerConfig{
+		EnableAuth: true,
+		JWTSecret:  "full-service-secret",
+	}
+	server := NewServerWithConfig(services, hub, logger, config)
+
+	if server == nil {
+		t.Fatal("Server should be created with all services provided")
+	}
+
+	// Count total routes - should have all service routes
+	routes := server.Router().Routes()
+	if len(routes) < 20 {
+		t.Errorf("Expected at least 20 routes with all services, got %d", len(routes))
+	}
+}
+
+// --- HTTP Method Verification ---
+
+func TestServer_HealthEndpoint_MethodNotAllowed(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServices(t)
+
+	config := &ServerConfig{EnableAuth: false}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	// POST to health endpoint should fail (only GET is registered)
+	req, _ := http.NewRequest("POST", "/health", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code == http.StatusOK {
+		t.Error("POST to /health should not return 200")
+	}
+}
+
+func TestServer_APIEndpoints_MethodRouting(t *testing.T) {
+	logger := zap.NewNop()
+	services := createTestServices(t)
+
+	config := &ServerConfig{EnableAuth: false}
+	server := NewServerWithConfig(services, nil, logger, config)
+
+	// GET /api/v1/agents should work
+	req, _ := http.NewRequest("GET", "/api/v1/agents", nil)
+	w := httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200 for GET /api/v1/agents, got %d", w.Code)
+	}
+
+	// DELETE /api/v1/agents (without paw) should return 404 or 405
+	req, _ = http.NewRequest("DELETE", "/api/v1/agents", nil)
+	w = httptest.NewRecorder()
+	server.Router().ServeHTTP(w, req)
+
+	if w.Code == http.StatusOK {
+		t.Error("DELETE /api/v1/agents without paw should not return 200")
+	}
+}

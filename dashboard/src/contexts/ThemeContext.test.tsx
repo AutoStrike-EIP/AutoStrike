@@ -151,4 +151,52 @@ describe('ThemeContext', () => {
 
     consoleSpy.mockRestore();
   });
+
+  it('cleans up system preference listener on unmount', () => {
+    localStorageMock.getItem.mockReturnValue('system');
+    const removeEventListenerSpy = vi.fn();
+    matchMediaMock.mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: removeEventListenerSpy,
+    });
+
+    const { unmount } = render(
+      <ThemeProvider>
+        <TestComponent />
+      </ThemeProvider>
+    );
+
+    unmount();
+
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('change', expect.any(Function));
+  });
+
+  it('handles invalid stored theme value gracefully', () => {
+    localStorageMock.getItem.mockReturnValue('invalid-theme');
+
+    render(
+      <ThemeProvider>
+        <TestComponent />
+      </ThemeProvider>
+    );
+
+    expect(screen.getByTestId('theme')).toHaveTextContent('system');
+  });
+
+  it('toggleTheme from dark to light', () => {
+    localStorageMock.getItem.mockReturnValue('dark');
+
+    render(
+      <ThemeProvider>
+        <TestComponent />
+      </ThemeProvider>
+    );
+
+    expect(screen.getByTestId('resolved')).toHaveTextContent('dark');
+
+    fireEvent.click(screen.getByTestId('toggle'));
+
+    expect(screen.getByTestId('resolved')).toHaveTextContent('light');
+  });
 });

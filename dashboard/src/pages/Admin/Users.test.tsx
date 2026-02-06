@@ -1355,13 +1355,23 @@ describe('Users Current User Indicator', () => {
   });
 
   it('does not show (you) for other users', async () => {
+    const { useAuth } = await import('../../contexts/AuthContext');
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: 'no-match-id', username: 'someone', email: 'someone@example.com', role: 'admin', is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      authEnabled: true,
+    });
+
     renderUsers();
 
     await waitFor(() => {
       expect(screen.getByText('operator@example.com')).toBeInTheDocument();
     });
 
-    // The default mock has currentUser.id = 'current-user', no user in the list matches
+    // No user in the list matches 'no-match-id'
     const youIndicators = screen.queryAllByText('(you)');
     expect(youIndicators.length).toBe(0);
   });
@@ -1374,8 +1384,8 @@ describe('Users Loading State', () => {
 
   it('shows loading state while data is being fetched', async () => {
     const { adminApi } = await import('../../lib/api');
-    // Create a never-resolving promise to keep loading state
-    vi.mocked(adminApi.listUsers).mockImplementation(() => new Promise(() => {}));
+    // Create a never-resolving promise to keep loading state (use Once to avoid polluting later tests)
+    vi.mocked(adminApi.listUsers).mockImplementationOnce(() => new Promise(() => {}));
 
     renderUsers();
 
@@ -1603,16 +1613,14 @@ describe('Users Role Change Modal - Details', () => {
       expect(screen.getByText('operator@example.com')).toBeInTheDocument();
     });
 
+    // Click the second role button (for the operator user, index 1)
     const roleButtons = screen.getAllByTitle('Change role');
-    const enabledButton = roleButtons.find(btn => !(btn as HTMLButtonElement).disabled);
-    if (enabledButton) {
-      fireEvent.click(enabledButton);
+    fireEvent.click(roleButtons[1]);
 
-      await waitFor(() => {
-        const roleSelect = screen.getByLabelText('Role') as HTMLSelectElement;
-        expect(roleSelect.value).toBe('operator');
-      });
-    }
+    await waitFor(() => {
+      const roleSelect = screen.getByLabelText('Role') as HTMLSelectElement;
+      expect(roleSelect.value).toBe('operator');
+    });
   });
 
   it('cancels role change modal', async () => {
@@ -1826,8 +1834,8 @@ describe('Users Reactivate Modal - Details', () => {
       data: {
         users: [{
           id: 'user-3',
-          username: 'inactive',
-          email: 'inactive@example.com',
+          username: 'deactivated-user',
+          email: 'deactivated@example.com',
           role: 'viewer',
           is_active: false,
           last_login_at: null,
@@ -1841,14 +1849,17 @@ describe('Users Reactivate Modal - Details', () => {
     renderUsers();
 
     await waitFor(() => {
-      expect(screen.getByText('inactive@example.com')).toBeInTheDocument();
+      expect(screen.getByText('deactivated@example.com')).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByTitle('Reactivate user'));
 
     await waitFor(() => {
-      expect(screen.getByText(/reactivate/)).toBeInTheDocument();
-      expect(screen.getByText('inactive')).toBeInTheDocument();
+      // The paragraph contains "Are you sure you want to reactivate <strong>deactivated-user</strong>?"
+      const confirmText = screen.getByText((_content, element) => {
+        return element?.tagName === 'P' && !!element?.textContent?.includes('deactivated-user');
+      });
+      expect(confirmText).toBeInTheDocument();
     });
   });
 });

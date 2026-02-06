@@ -1,6 +1,8 @@
 //! Command execution with timeout support.
 
 use std::process::Stdio;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
@@ -53,50 +55,29 @@ impl CommandExecutor {
             }
         };
 
-        // Take ownership of stdout/stderr for streaming reads
-        let mut stdout = child.stdout.take().expect("stdout piped");
-        let mut stderr = child.stderr.take().expect("stderr piped");
+        // Take ownership of stdout/stderr for concurrent reads
+        let stdout = child.stdout.take().expect("stdout piped");
+        let stderr = child.stderr.take().expect("stderr piped");
 
-        // Stream stdout and stderr with a hard byte cap
+        // Shared byte budget to cap total output across both streams
+        let budget = Arc::new(AtomicUsize::new(MAX_OUTPUT_SIZE));
+
+        // Drain stdout concurrently
+        let stdout_fut = {
+            let budget = budget.clone();
+            async move { drain_stream(stdout, &budget).await }
+        };
+
+        // Drain stderr concurrently
+        let stderr_fut = {
+            let budget = budget.clone();
+            async move { drain_stream(stderr, &budget).await }
+        };
+
+        // Both streams are polled concurrently via join!, preventing pipe deadlocks
         let read_output = async {
-            let mut stdout_buf = vec![0u8; 0];
-            let mut stderr_buf = vec![0u8; 0];
-            let mut total = 0usize;
-            let mut chunk = [0u8; 8192];
-
-            // Read stdout up to MAX_OUTPUT_SIZE
-            loop {
-                match stdout.read(&mut chunk).await {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let take = n.min(MAX_OUTPUT_SIZE.saturating_sub(total));
-                        stdout_buf.extend_from_slice(&chunk[..take]);
-                        total += take;
-                        if total >= MAX_OUTPUT_SIZE {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-
-            // Read stderr with remaining budget
-            loop {
-                match stderr.read(&mut chunk).await {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let take = n.min(MAX_OUTPUT_SIZE.saturating_sub(total));
-                        stderr_buf.extend_from_slice(&chunk[..take]);
-                        total += take;
-                        if total >= MAX_OUTPUT_SIZE {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-
-            let truncated = total >= MAX_OUTPUT_SIZE;
+            let (stdout_buf, stderr_buf) = tokio::join!(stdout_fut, stderr_fut);
+            let truncated = budget.load(Ordering::Relaxed) == 0;
             let stdout_str = String::from_utf8_lossy(&stdout_buf);
             let stderr_str = String::from_utf8_lossy(&stderr_buf);
             let combined = format!("{}{}", stdout_str, stderr_str);
@@ -107,12 +88,12 @@ impl CommandExecutor {
                 output.truncate(safe_boundary);
                 output.push_str("\n... [output truncated]");
             }
-            (output, truncated)
+            output
         };
 
         // Race output collection against timeout, kill child on timeout
         tokio::select! {
-            (output, _truncated) = read_output => {
+            output = read_output => {
                 // Output collected, now wait for child to exit
                 match child.wait().await {
                     Ok(status) => ExecutionResult {
@@ -188,6 +169,56 @@ impl CommandExecutor {
 impl Default for CommandExecutor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Drains an async reader into a Vec, claiming bytes from a shared atomic budget.
+/// Returns the collected bytes. Stops when the stream is exhausted or the budget is depleted.
+async fn drain_stream<R: tokio::io::AsyncRead + Unpin>(
+    mut stream: R,
+    budget: &AtomicUsize,
+) -> Vec<u8> {
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 8192];
+    loop {
+        if budget.load(Ordering::Relaxed) == 0 {
+            break;
+        }
+        match stream.read(&mut chunk).await {
+            Ok(0) => break,
+            Ok(n) => {
+                let claimed = claim_budget(budget, n);
+                if claimed > 0 {
+                    buf.extend_from_slice(&chunk[..claimed]);
+                }
+                if claimed < n {
+                    break; // Budget exhausted
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    buf
+}
+
+/// Atomically claims up to `want` bytes from the shared budget.
+/// Returns the number of bytes actually claimed.
+fn claim_budget(budget: &AtomicUsize, want: usize) -> usize {
+    loop {
+        let current = budget.load(Ordering::Relaxed);
+        if current == 0 {
+            return 0;
+        }
+        let claim = want.min(current);
+        match budget.compare_exchange_weak(
+            current,
+            current - claim,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => return claim,
+            Err(_) => continue,
+        }
     }
 }
 

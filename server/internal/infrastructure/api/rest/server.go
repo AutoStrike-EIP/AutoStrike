@@ -24,8 +24,9 @@ const (
 
 // Server represents the HTTP REST server
 type Server struct {
-	router *gin.Engine
-	logger *zap.Logger
+	router       *gin.Engine
+	logger       *zap.Logger
+	cleanupFuncs []func()
 }
 
 // ServerConfig contains server configuration options
@@ -135,14 +136,17 @@ func NewServerWithConfig(
 
 	// Token blacklist for logout revocation
 	var tokenBlacklist *application.TokenBlacklist
+	var cleanupFuncs []func()
 	if config.EnableAuth {
 		tokenBlacklist = application.NewTokenBlacklist()
+		cleanupFuncs = append(cleanupFuncs, tokenBlacklist.Close)
 	}
 
 	// Auth routes (public - no auth middleware required, with rate limiting)
 	if services.Auth != nil {
 		loginLimiter := middleware.NewRateLimiter(5, 1*time.Minute)   // 5 attempts/min per IP
 		refreshLimiter := middleware.NewRateLimiter(10, 1*time.Minute) // 10 refreshes/min per IP
+		cleanupFuncs = append(cleanupFuncs, loginLimiter.Close, refreshLimiter.Close)
 		authHandler := handlers.NewAuthHandlerWithBlacklist(services.Auth, tokenBlacklist)
 		authHandler.RegisterRoutesWithRateLimit(router, loginLimiter, refreshLimiter)
 	}
@@ -166,7 +170,8 @@ func NewServerWithConfig(
 	}
 
 	// Register routes with permission middleware
-	registerRoutesWithPermissions(api, services, hub, logger, tokenBlacklist)
+	routeCleanups := registerRoutesWithPermissions(api, services, hub, logger, tokenBlacklist)
+	cleanupFuncs = append(cleanupFuncs, routeCleanups...)
 
 	// Serve dashboard static files if path is configured
 	if config.DashboardPath != "" {
@@ -174,8 +179,9 @@ func NewServerWithConfig(
 	}
 
 	return &Server{
-		router: router,
-		logger: logger,
+		router:       router,
+		logger:       logger,
+		cleanupFuncs: cleanupFuncs,
 	}
 }
 
@@ -214,8 +220,11 @@ func setupDashboardRoutes(router *gin.Engine, dashboardPath string, logger *zap.
 	logger.Info("Dashboard serving enabled", zap.String("path", absPath))
 }
 
-// registerRoutesWithPermissions registers all API routes with appropriate permission middleware
-func registerRoutesWithPermissions(api *gin.RouterGroup, services *Services, hub *websocket.Hub, logger *zap.Logger, tokenBlacklist *application.TokenBlacklist) {
+// registerRoutesWithPermissions registers all API routes with appropriate permission middleware.
+// Returns cleanup functions for any rate limiters created.
+func registerRoutesWithPermissions(api *gin.RouterGroup, services *Services, hub *websocket.Hub, logger *zap.Logger, tokenBlacklist *application.TokenBlacklist) []func() {
+	var cleanups []func()
+
 	// Helper to create permission middleware
 	perm := middleware.PermissionMiddleware
 	adminOnly := middleware.RoleMiddleware("admin")
@@ -227,6 +236,7 @@ func registerRoutesWithPermissions(api *gin.RouterGroup, services *Services, hub
 
 		// Logout requires authentication + rate limiting to prevent blacklist abuse
 		logoutLimiter := middleware.NewRateLimiter(10, 1*time.Minute)
+		cleanups = append(cleanups, logoutLimiter.Close)
 		authHandler.RegisterLogoutRoute(api, logoutLimiter)
 
 		// Admin routes (requires admin role)
@@ -359,6 +369,14 @@ func registerRoutesWithPermissions(api *gin.RouterGroup, services *Services, hub
 	}
 
 	logger.Info("Routes registered with permission middleware")
+	return cleanups
+}
+
+// Close releases resources owned by the server (rate limiters, token blacklist).
+func (s *Server) Close() {
+	for _, fn := range s.cleanupFuncs {
+		fn()
+	}
 }
 
 // Run starts the HTTP server

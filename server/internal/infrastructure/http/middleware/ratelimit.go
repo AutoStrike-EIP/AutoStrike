@@ -20,6 +20,7 @@ type RateLimiter struct {
 	ips      map[string]*ipEntry
 	limit    int
 	window   time.Duration
+	stopCh   chan struct{}
 }
 
 // NewRateLimiter creates a rate limiter that allows `limit` requests per `window` per IP
@@ -28,18 +29,29 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 		ips:    make(map[string]*ipEntry),
 		limit:  limit,
 		window: window,
+		stopCh: make(chan struct{}),
 	}
 
 	// Background cleanup every 5 minutes to prevent memory leak
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
-		for range ticker.C {
-			rl.cleanup()
+		for {
+			select {
+			case <-ticker.C:
+				rl.cleanup()
+			case <-rl.stopCh:
+				return
+			}
 		}
 	}()
 
 	return rl
+}
+
+// Close stops the background cleanup goroutine.
+func (rl *RateLimiter) Close() {
+	close(rl.stopCh)
 }
 
 // cleanup removes expired entries

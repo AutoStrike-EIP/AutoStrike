@@ -747,6 +747,7 @@ func TestAuthMiddleware_OnlyTokenPrefix(t *testing.T) {
 
 func TestNewRateLimiter(t *testing.T) {
 	rl := NewRateLimiter(5, time.Minute)
+	defer rl.Close()
 	if rl == nil {
 		t.Fatal("Expected non-nil rate limiter")
 	}

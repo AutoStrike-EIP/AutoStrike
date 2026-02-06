@@ -186,6 +186,9 @@ func main() {
 
 	// Stop the scheduler
 	scheduleService.Stop()
+
+	// Close server resources (rate limiters, token blacklist)
+	server.Close()
 }
 
 func autoImportTechniques(service *application.TechniqueService, logger *zap.Logger) {

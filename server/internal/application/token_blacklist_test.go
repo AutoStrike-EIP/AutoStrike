@@ -8,6 +8,7 @@ import (
 
 func TestNewTokenBlacklist(t *testing.T) {
 	bl := NewTokenBlacklist()
+	defer bl.Close()
 	if bl == nil {
 		t.Fatal("Expected non-nil blacklist")
 	}
@@ -110,6 +111,7 @@ func TestTokenBlacklist_Cleanup_EmptyMap(t *testing.T) {
 
 func TestTokenBlacklist_ConcurrentAccess(t *testing.T) {
 	bl := NewTokenBlacklist()
+	defer bl.Close()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {

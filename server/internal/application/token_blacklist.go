@@ -13,6 +13,7 @@ import (
 type TokenBlacklist struct {
 	mu     sync.RWMutex
 	tokens map[string]time.Time // hash(token) -> expiry time
+	stopCh chan struct{}
 }
 
 // hashToken returns the SHA-256 hex digest of a token string.
@@ -25,9 +26,15 @@ func hashToken(token string) string {
 func NewTokenBlacklist() *TokenBlacklist {
 	bl := &TokenBlacklist{
 		tokens: make(map[string]time.Time),
+		stopCh: make(chan struct{}),
 	}
 	go bl.cleanupLoop()
 	return bl
+}
+
+// Close stops the background cleanup goroutine.
+func (bl *TokenBlacklist) Close() {
+	close(bl.stopCh)
 }
 
 // Revoke adds a token to the blacklist until its expiry time.
@@ -53,8 +60,13 @@ func (bl *TokenBlacklist) IsRevoked(token string) bool {
 func (bl *TokenBlacklist) cleanupLoop() {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		bl.cleanup()
+	for {
+		select {
+		case <-ticker.C:
+			bl.cleanup()
+		case <-bl.stopCh:
+			return
+		}
 	}
 }
 

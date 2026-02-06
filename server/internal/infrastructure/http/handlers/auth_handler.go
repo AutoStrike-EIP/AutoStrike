@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -10,7 +12,6 @@ import (
 	"autostrike/internal/infrastructure/http/middleware"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 // AuthHandler handles authentication-related HTTP requests
@@ -134,25 +135,31 @@ func (h *AuthHandler) revokeTokenFromHeader(authHeader string) {
 	h.tokenBlacklist.Revoke(tokenString, expiry)
 }
 
-// getTokenExpiry parses the token expiry without signature validation
+// getTokenExpiry extracts the exp claim from a JWT by decoding the payload.
+// This does not verify the signature — it only reads the expiry for blacklist duration.
+// The token has already been authenticated by the auth middleware before logout.
 func getTokenExpiry(tokenString string) time.Time {
-	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
-	token, _, err := parser.ParseUnverified(tokenString, jwt.MapClaims{})
+	const fallback = 24 * time.Hour
+
+	// JWT format: header.payload.signature
+	parts := strings.SplitN(tokenString, ".", 3)
+	if len(parts) != 3 {
+		return time.Now().Add(fallback)
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return time.Now().Add(24 * time.Hour)
+		return time.Now().Add(fallback)
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return time.Now().Add(24 * time.Hour)
+	var claims struct {
+		Exp *float64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == nil {
+		return time.Now().Add(fallback)
 	}
 
-	exp, err := claims.GetExpirationTime()
-	if err != nil || exp == nil {
-		return time.Now().Add(24 * time.Hour)
-	}
-
-	return exp.Time
+	return time.Unix(int64(*claims.Exp), 0)
 }
 
 // Me returns the current authenticated user

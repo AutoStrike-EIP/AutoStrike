@@ -275,20 +275,25 @@ export default function Scenarios() {
     return { ...phase, techniques: updatedTechniques };
   };
 
+  const updateExecutorInPhase = (
+    phase: { id: string; name: string; techniques: TechniqueSelection[] },
+    techniqueId: string,
+    executorName: string
+  ) => ({
+    ...phase,
+    techniques: phase.techniques.map(t =>
+      t.technique_id === techniqueId
+        ? { ...t, executor_name: executorName || undefined }
+        : t
+    ),
+  });
+
   const handleExecutorChange = (phaseIndex: number, techniqueId: string, executorName: string) => {
     setNewScenario(prev => ({
       ...prev,
-      phases: prev.phases.map((p, i) => {
-        if (i !== phaseIndex) return p;
-        return {
-          ...p,
-          techniques: p.techniques.map(t =>
-            t.technique_id === techniqueId
-              ? { ...t, executor_name: executorName || undefined }
-              : t
-          ),
-        };
-      }),
+      phases: prev.phases.map((p, i) =>
+        i === phaseIndex ? updateExecutorInPhase(p, techniqueId, executorName) : p
+      ),
     }));
   };
 
@@ -317,7 +322,7 @@ export default function Scenarios() {
       tags: newScenario.tags.split(',').map(t => t.trim()).filter(Boolean),
       phases: newScenario.phases.map((p, i) => ({
         name: p.name,
-        techniques: p.techniques as TechniqueSelection[],
+        techniques: p.techniques,
         order: i + 1,
       })),
     });

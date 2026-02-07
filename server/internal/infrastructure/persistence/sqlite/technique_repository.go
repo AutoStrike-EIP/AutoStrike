@@ -15,7 +15,12 @@ import (
 
 // SQL column constants and error messages for techniques
 const (
-	techniqueColumns     = "id, name, description, tactic, platforms, executors, detection, is_safe, tactics, `references`"
+	techniqueColumns = "id, name, description, tactic, platforms, executors, detection, is_safe, tactics, `references`"
+
+	sqlInsertTechnique = "INSERT INTO techniques (id, name, description, tactic, platforms, executors, detection, is_safe, tactics, `references`, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	sqlUpdateTechnique = "UPDATE techniques SET name = ?, description = ?, tactic = ?, platforms = ?, executors = ?, detection = ?, is_safe = ?, tactics = ?, `references` = ? WHERE id = ?"
+	sqlUpsertTechnique = "INSERT INTO techniques (id, name, description, tactic, platforms, executors, detection, is_safe, tactics, `references`, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, tactic = excluded.tactic, platforms = excluded.platforms, executors = excluded.executors, detection = excluded.detection, is_safe = excluded.is_safe, tactics = excluded.tactics, `references` = excluded.`references`"
+
 	errMarshalPlatforms  = "failed to marshal platforms: %w"
 	errMarshalExecutors  = "failed to marshal executors: %w"
 	errMarshalDetection  = "failed to marshal detection: %w"
@@ -65,10 +70,9 @@ func (r *TechniqueRepository) Create(ctx context.Context, technique *entity.Tech
 		return err
 	}
 
-	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO techniques (id, name, description, tactic, platforms, executors, detection, is_safe, tactics, `+"`references`"+`, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, technique.ID, technique.Name, technique.Description, technique.Tactic, platforms, executors, detection, technique.IsSafe, tactics, references, time.Now())
+	_, err = r.db.ExecContext(ctx, sqlInsertTechnique,
+		technique.ID, technique.Name, technique.Description, technique.Tactic,
+		platforms, executors, detection, technique.IsSafe, tactics, references, time.Now())
 
 	return err
 }
@@ -80,10 +84,9 @@ func (r *TechniqueRepository) Update(ctx context.Context, technique *entity.Tech
 		return err
 	}
 
-	_, err = r.db.ExecContext(ctx, `
-		UPDATE techniques SET name = ?, description = ?, tactic = ?, platforms = ?, executors = ?, detection = ?, is_safe = ?, tactics = ?, `+"`references`"+` = ?
-		WHERE id = ?
-	`, technique.Name, technique.Description, technique.Tactic, platforms, executors, detection, technique.IsSafe, tactics, references, technique.ID)
+	_, err = r.db.ExecContext(ctx, sqlUpdateTechnique,
+		technique.Name, technique.Description, technique.Tactic,
+		platforms, executors, detection, technique.IsSafe, tactics, references, technique.ID)
 
 	return err
 }
@@ -178,20 +181,9 @@ func (r *TechniqueRepository) upsert(ctx context.Context, technique *entity.Tech
 		return err
 	}
 
-	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO techniques (id, name, description, tactic, platforms, executors, detection, is_safe, tactics, `+"`references`"+`, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			name = excluded.name,
-			description = excluded.description,
-			tactic = excluded.tactic,
-			platforms = excluded.platforms,
-			executors = excluded.executors,
-			detection = excluded.detection,
-			is_safe = excluded.is_safe,
-			tactics = excluded.tactics,
-			`+"`references`"+` = excluded.`+"`references`"+`
-	`, technique.ID, technique.Name, technique.Description, technique.Tactic, platforms, executors, detection, technique.IsSafe, tactics, references, time.Now())
+	_, err = r.db.ExecContext(ctx, sqlUpsertTechnique,
+		technique.ID, technique.Name, technique.Description, technique.Tactic,
+		platforms, executors, detection, technique.IsSafe, tactics, references, time.Now())
 
 	return err
 }

@@ -112,6 +112,29 @@ func (h *TechniqueHandler) GetCoverage(c *gin.Context) {
 	c.JSON(http.StatusOK, coverage)
 }
 
+// filterExecutorsByPlatform returns executors matching the given platform,
+// or empty if the technique does not support that platform.
+func filterExecutorsByPlatform(technique *entity.Technique, platform string) []entity.Executor {
+	platformSupported := false
+	for _, p := range technique.Platforms {
+		if p == platform {
+			platformSupported = true
+			break
+		}
+	}
+	if !platformSupported {
+		return []entity.Executor{}
+	}
+
+	var executors []entity.Executor
+	for _, exec := range technique.Executors {
+		if exec.Platform == "" || exec.Platform == platform {
+			executors = append(executors, exec)
+		}
+	}
+	return executors
+}
+
 // GetExecutors returns executors for a technique, optionally filtered by platform
 func (h *TechniqueHandler) GetExecutors(c *gin.Context) {
 	id := c.Param("id")
@@ -126,22 +149,7 @@ func (h *TechniqueHandler) GetExecutors(c *gin.Context) {
 	var executors []entity.Executor
 
 	if platform != "" {
-		// First check if the technique supports this platform at all
-		platformSupported := false
-		for _, p := range technique.Platforms {
-			if p == platform {
-				platformSupported = true
-				break
-			}
-		}
-		if platformSupported {
-			// Filter by platform: return executors matching the platform
-			for _, exec := range technique.Executors {
-				if exec.Platform == "" || exec.Platform == platform {
-					executors = append(executors, exec)
-				}
-			}
-		}
+		executors = filterExecutorsByPlatform(technique, platform)
 	} else {
 		executors = technique.Executors
 	}

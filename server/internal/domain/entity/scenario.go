@@ -75,7 +75,7 @@ func (p *Phase) UnmarshalJSON(data []byte) error {
 
 	// Try new format first: []TechniqueSelection
 	var selections []TechniqueSelection
-	if err := json.Unmarshal(raw.Techniques, &selections); err == nil {
+	if json.Unmarshal(raw.Techniques, &selections) == nil {
 		// Verify it's actually the new format (objects with technique_id field)
 		// by checking if the first element has a non-empty TechniqueID
 		if len(selections) == 0 || selections[0].TechniqueID != "" {

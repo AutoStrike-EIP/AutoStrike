@@ -90,8 +90,6 @@ func Merge(stix map[string]*STIXTechnique, atomics map[string]*AtomicTechnique) 
 			continue // Inner join: skip STIX-only
 		}
 
-		stats.Matched++
-
 		// Filter executors to only include supported platforms from STIX
 		platformSet := make(map[string]bool)
 		for _, p := range stixTech.Platforms {
@@ -118,6 +116,7 @@ func Merge(stix map[string]*STIXTechnique, atomics map[string]*AtomicTechnique) 
 			continue // No executable tests for supported platforms
 		}
 
+		stats.Matched++
 		stats.ExecutorsTotal += len(executors)
 
 		// Determine primary tactic and all tactics

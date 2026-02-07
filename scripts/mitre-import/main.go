@@ -147,7 +147,7 @@ func fileExists(path string) bool {
 }
 
 // downloadFile downloads a URL to a local file
-func downloadFile(url, dest string) error {
+func downloadFile(url, dest string) (retErr error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("HTTP GET failed: %w", err)
@@ -166,18 +166,16 @@ func downloadFile(url, dest string) error {
 	if err != nil {
 		return err
 	}
-
-	var writeErr error
 	defer func() {
-		if cerr := out.Close(); writeErr == nil {
-			writeErr = cerr
+		if cerr := out.Close(); retErr == nil {
+			retErr = cerr
 		}
 	}()
 
-	if _, writeErr = io.Copy(out, resp.Body); writeErr != nil {
-		return writeErr
+	if _, retErr = io.Copy(out, resp.Body); retErr != nil {
+		return retErr
 	}
-	return writeErr
+	return retErr
 }
 
 // cloneAtomics performs a shallow git clone of the Atomic Red Team repository

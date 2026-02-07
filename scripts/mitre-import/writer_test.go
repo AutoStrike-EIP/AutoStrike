@@ -505,3 +505,69 @@ func TestWriteYAMLFiles_ReferencesIncluded(t *testing.T) {
 		t.Error("Should contain the reference URL")
 	}
 }
+
+func TestPrintDryRunStats_DoesNotPanic(t *testing.T) {
+	stats := MergeStats{
+		STIXTotal:       100,
+		AtomicTotal:     200,
+		Matched:         50,
+		STIXOnly:        50,
+		AtomicOnly:      150,
+		ExecutorsTotal:  120,
+		SafeCount:       30,
+		UnsafeCount:     20,
+		TacticBreakdown: map[string]int{"discovery": 10, "execution": 15},
+	}
+
+	techniques := []*MergedTechnique{
+		{
+			ID: "T1082", Name: "System Info", Tactic: "discovery",
+			Executors: []MergedExecutor{{Name: "test", Type: "cmd", Platform: "windows", Command: "systeminfo", Timeout: 60}},
+			IsSafe:    true,
+		},
+	}
+
+	// Redirect stdout to avoid test output noise
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	PrintDryRunStats(stats, techniques)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf [8192]byte
+	n, _ := r.Read(buf[:])
+	output := string(buf[:n])
+
+	if !strings.Contains(output, "STIX techniques total") {
+		t.Error("Output should contain STIX techniques total")
+	}
+	if !strings.Contains(output, "discovery") {
+		t.Error("Output should contain tactic name")
+	}
+}
+
+func TestPrintDryRunStats_EmptyTacticTechnique(t *testing.T) {
+	stats := MergeStats{
+		TacticBreakdown: map[string]int{},
+	}
+	techniques := []*MergedTechnique{
+		{
+			ID: "T9999", Name: "Unknown", Tactic: "",
+			Executors: []MergedExecutor{{Name: "test", Type: "bash", Platform: "linux", Command: "echo", Timeout: 60}},
+			IsSafe:    true,
+		},
+	}
+
+	// Redirect stdout
+	oldStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	PrintDryRunStats(stats, techniques)
+
+	w.Close()
+	os.Stdout = oldStdout
+}

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -308,5 +310,161 @@ atomic_tests:
 
 	if len(tech.Executors) != 0 {
 		t.Errorf("Expected 0 executors (unsupported platform), got %d", len(tech.Executors))
+	}
+}
+
+func TestParseAtomicFile_ValidFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	yamlContent := []byte(`
+attack_technique: T1082
+display_name: System Information Discovery
+atomic_tests:
+  - name: "systeminfo"
+    auto_generated_guid: "abc-123"
+    description: "test"
+    supported_platforms:
+      - windows
+    executor:
+      name: command_prompt
+      command: systeminfo
+`)
+	path := filepath.Join(tmpDir, "T1082.yaml")
+	if err := os.WriteFile(path, yamlContent, 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	tech, err := ParseAtomicFile(path, "T1082")
+	if err != nil {
+		t.Fatalf("ParseAtomicFile failed: %v", err)
+	}
+
+	if tech.ID != "T1082" {
+		t.Errorf("ID = %s, want T1082", tech.ID)
+	}
+	if len(tech.Executors) != 1 {
+		t.Errorf("Expected 1 executor, got %d", len(tech.Executors))
+	}
+}
+
+func TestParseAtomicFile_FileNotFound(t *testing.T) {
+	_, err := ParseAtomicFile("/nonexistent/path.yaml", "T9999")
+	if err == nil {
+		t.Error("Expected error for nonexistent file")
+	}
+}
+
+func TestParseAtomics_DirectoryWithTechniques(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create T1082 directory with YAML file
+	t1082Dir := filepath.Join(tmpDir, "T1082")
+	os.Mkdir(t1082Dir, 0755)
+	os.WriteFile(filepath.Join(t1082Dir, "T1082.yaml"), []byte(`
+attack_technique: T1082
+display_name: System Information Discovery
+atomic_tests:
+  - name: "systeminfo"
+    auto_generated_guid: "abc-123"
+    description: "test"
+    supported_platforms:
+      - windows
+    executor:
+      name: command_prompt
+      command: systeminfo
+`), 0644)
+
+	// Create T1083 directory with .yml file
+	t1083Dir := filepath.Join(tmpDir, "T1083")
+	os.Mkdir(t1083Dir, 0755)
+	os.WriteFile(filepath.Join(t1083Dir, "T1083.yml"), []byte(`
+attack_technique: T1083
+display_name: File and Directory Discovery
+atomic_tests:
+  - name: "ls"
+    auto_generated_guid: "def-456"
+    description: "test"
+    supported_platforms:
+      - linux
+    executor:
+      name: bash
+      command: ls -la /home
+`), 0644)
+
+	// Create a non-technique directory (should be skipped)
+	os.Mkdir(filepath.Join(tmpDir, "Indexes"), 0755)
+
+	techniques, err := ParseAtomics(tmpDir)
+	if err != nil {
+		t.Fatalf("ParseAtomics failed: %v", err)
+	}
+
+	if len(techniques) != 2 {
+		t.Errorf("Expected 2 techniques, got %d", len(techniques))
+	}
+	if techniques["T1082"] == nil {
+		t.Error("T1082 should be parsed")
+	}
+	if techniques["T1083"] == nil {
+		t.Error("T1083 should be parsed")
+	}
+}
+
+func TestParseAtomics_EmptyDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	techniques, err := ParseAtomics(tmpDir)
+	if err != nil {
+		t.Fatalf("ParseAtomics failed: %v", err)
+	}
+	if len(techniques) != 0 {
+		t.Errorf("Expected 0 techniques for empty dir, got %d", len(techniques))
+	}
+}
+
+func TestParseAtomics_NonexistentDirectory(t *testing.T) {
+	_, err := ParseAtomics("/nonexistent/directory")
+	if err == nil {
+		t.Error("Expected error for nonexistent directory")
+	}
+}
+
+func TestParseAtomics_SkipsInvalidYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	t1000Dir := filepath.Join(tmpDir, "T1000")
+	os.Mkdir(t1000Dir, 0755)
+	os.WriteFile(filepath.Join(t1000Dir, "T1000.yaml"), []byte("invalid: [yaml"), 0644)
+
+	techniques, err := ParseAtomics(tmpDir)
+	if err != nil {
+		t.Fatalf("ParseAtomics failed: %v", err)
+	}
+	if len(techniques) != 0 {
+		t.Errorf("Expected 0 techniques (invalid YAML skipped), got %d", len(techniques))
+	}
+}
+
+func TestParseAtomics_SkipsManualOnlyTechniques(t *testing.T) {
+	tmpDir := t.TempDir()
+	t1000Dir := filepath.Join(tmpDir, "T1000")
+	os.Mkdir(t1000Dir, 0755)
+	os.WriteFile(filepath.Join(t1000Dir, "T1000.yaml"), []byte(`
+attack_technique: T1000
+display_name: Manual Only
+atomic_tests:
+  - name: "Manual"
+    auto_generated_guid: "xxx-000"
+    description: "Manual only"
+    supported_platforms:
+      - windows
+    executor:
+      name: manual
+      command: ""
+`), 0644)
+
+	techniques, err := ParseAtomics(tmpDir)
+	if err != nil {
+		t.Fatalf("ParseAtomics failed: %v", err)
+	}
+	if len(techniques) != 0 {
+		t.Errorf("Expected 0 techniques (manual-only skipped), got %d", len(techniques))
 	}
 }

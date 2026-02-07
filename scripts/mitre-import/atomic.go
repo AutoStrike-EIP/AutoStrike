@@ -140,17 +140,18 @@ func ParseAtomicData(data []byte, techID string) (*AtomicTechnique, error) {
 		command := resolveTemplates(test.Executor.Command, test.InputArguments)
 		cleanup := resolveTemplates(test.Executor.CleanupCommand, test.InputArguments)
 
+		// Deduplicate name once per test, not per platform
+		name := test.Name
+		nameCount[name]++
+		if nameCount[name] > 1 {
+			name = fmt.Sprintf("%s (%d)", name, nameCount[name])
+		}
+
 		// Determine platform from supported_platforms
 		for _, platform := range test.SupportedPlatforms {
 			platform = strings.ToLower(platform)
 			if platform != "windows" && platform != "linux" && platform != "macos" {
 				continue
-			}
-
-			name := test.Name
-			nameCount[name]++
-			if nameCount[name] > 1 {
-				name = fmt.Sprintf("%s (%d)", name, nameCount[name])
 			}
 
 			tech.Executors = append(tech.Executors, AtomicExecutorResult{

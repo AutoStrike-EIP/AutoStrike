@@ -157,8 +157,10 @@ func downloadFile(url, dest string) error {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	return err
+	if _, err = io.Copy(out, resp.Body); err != nil {
+		return err
+	}
+	return out.Close()
 }
 
 // cloneAtomics performs a shallow git clone of the Atomic Red Team repository

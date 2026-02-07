@@ -44,7 +44,7 @@ type MergeStats struct {
 
 // dangerousPatterns are command patterns that force is_safe=false
 var dangerousPatterns = []string{
-	"rm -rf", "del /f", "format", "kill", "shutdown",
+	"rm -rf", "del /f", "format c:", "format d:", "shutdown",
 	"encrypt", "mkfs", "dd if=", "fdisk", "wipefs",
 	"cipher /w", "sdelete", "shred", "> /dev/sd",
 	"Remove-Item -Recurse -Force", "Stop-Service",

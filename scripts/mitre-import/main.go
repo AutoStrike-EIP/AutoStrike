@@ -57,11 +57,11 @@ func main() {
 	// Resolve Atomics path
 	resolvedAtomicsPath := *atomicsPath
 	if resolvedAtomicsPath == "" {
-		resolvedAtomicsPath = filepath.Join(*cacheDir, "atomic-red-team")
-		atomicsDir := filepath.Join(resolvedAtomicsPath, "atomics")
+		repoDir := filepath.Join(*cacheDir, "atomic-red-team")
+		atomicsDir := filepath.Join(repoDir, "atomics")
 		if *forceDownload || !fileExists(atomicsDir) {
 			fmt.Println("Cloning Atomic Red Team repository (shallow)...")
-			if err := cloneAtomics(atomicRepo, resolvedAtomicsPath); err != nil {
+			if err := cloneAtomics(atomicRepo, repoDir); err != nil {
 				log.Fatalf("Failed to clone Atomic Red Team: %v", err)
 			}
 			fmt.Println("Clone complete.")
@@ -69,6 +69,12 @@ func main() {
 			fmt.Println("Using cached Atomic Red Team data.")
 		}
 		resolvedAtomicsPath = atomicsDir
+	} else {
+		// User-provided path points to the repo root; append /atomics
+		atomicsDir := filepath.Join(resolvedAtomicsPath, "atomics")
+		if fileExists(atomicsDir) {
+			resolvedAtomicsPath = atomicsDir
+		}
 	}
 
 	// Parse STIX
@@ -98,13 +104,16 @@ func main() {
 	// Filter safe-only if requested
 	if *safeOnly {
 		var filtered []*MergedTechnique
+		filteredExecutors := 0
 		for _, tech := range merged {
 			if tech.IsSafe {
 				filtered = append(filtered, tech)
+				filteredExecutors += len(tech.Executors)
 			}
 		}
 		fmt.Printf("Filtered to %d safe techniques (from %d total)\n", len(filtered), len(merged))
 		merged = filtered
+		stats.ExecutorsTotal = filteredExecutors
 	}
 
 	if *dryRun {

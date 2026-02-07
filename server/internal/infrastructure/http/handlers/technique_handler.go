@@ -126,10 +126,20 @@ func (h *TechniqueHandler) GetExecutors(c *gin.Context) {
 	var executors []entity.Executor
 
 	if platform != "" {
-		// Filter by platform: return executors matching the platform
-		for _, exec := range technique.Executors {
-			if exec.Platform == "" || exec.Platform == platform {
-				executors = append(executors, exec)
+		// First check if the technique supports this platform at all
+		platformSupported := false
+		for _, p := range technique.Platforms {
+			if p == platform {
+				platformSupported = true
+				break
+			}
+		}
+		if platformSupported {
+			// Filter by platform: return executors matching the platform
+			for _, exec := range technique.Executors {
+				if exec.Platform == "" || exec.Platform == platform {
+					executors = append(executors, exec)
+				}
 			}
 		}
 	} else {

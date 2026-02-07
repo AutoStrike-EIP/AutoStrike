@@ -1947,3 +1947,124 @@ func TestValidateImportPath_ConfigsPrefixNotDir(t *testing.T) {
 		t.Error("Expected error for configs_backup (not a valid directory prefix)")
 	}
 }
+
+func TestTechniqueHandler_GetExecutors(t *testing.T) {
+	repo := newMockTechniqueRepo()
+	repo.techniques["T1082"] = &entity.Technique{
+		ID:        "T1082",
+		Name:      "System Information Discovery",
+		Platforms: []string{"windows", "linux"},
+		Executors: []entity.Executor{
+			{Name: "systeminfo", Type: "cmd", Platform: "windows", Command: "systeminfo", Timeout: 300},
+			{Name: "uname", Type: "bash", Platform: "linux", Command: "uname -a", Timeout: 300},
+			{Name: "generic", Type: "bash", Command: "hostname", Timeout: 300},
+		},
+	}
+	svc := application.NewTechniqueService(repo)
+	handler := NewTechniqueHandler(svc)
+
+	router := gin.New()
+	router.GET("/techniques/:id/executors", handler.GetExecutors)
+
+	// Test: no platform filter returns all executors
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/techniques/T1082/executors", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	var executors []entity.Executor
+	if err := json.Unmarshal(w.Body.Bytes(), &executors); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if len(executors) != 3 {
+		t.Errorf("Expected 3 executors, got %d", len(executors))
+	}
+}
+
+func TestTechniqueHandler_GetExecutors_PlatformFilter(t *testing.T) {
+	repo := newMockTechniqueRepo()
+	repo.techniques["T1082"] = &entity.Technique{
+		ID:        "T1082",
+		Name:      "System Information Discovery",
+		Platforms: []string{"windows", "linux"},
+		Executors: []entity.Executor{
+			{Name: "systeminfo", Type: "cmd", Platform: "windows", Command: "systeminfo", Timeout: 300},
+			{Name: "uname", Type: "bash", Platform: "linux", Command: "uname -a", Timeout: 300},
+			{Name: "generic", Type: "bash", Command: "hostname", Timeout: 300},
+		},
+	}
+	svc := application.NewTechniqueService(repo)
+	handler := NewTechniqueHandler(svc)
+
+	router := gin.New()
+	router.GET("/techniques/:id/executors", handler.GetExecutors)
+
+	// Test: filter by linux returns linux + generic executors
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/techniques/T1082/executors?platform=linux", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	var executors []entity.Executor
+	if err := json.Unmarshal(w.Body.Bytes(), &executors); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if len(executors) != 2 {
+		t.Errorf("Expected 2 executors (linux + generic), got %d", len(executors))
+	}
+}
+
+func TestTechniqueHandler_GetExecutors_UnsupportedPlatform(t *testing.T) {
+	repo := newMockTechniqueRepo()
+	repo.techniques["T1082"] = &entity.Technique{
+		ID:        "T1082",
+		Name:      "System Information Discovery",
+		Platforms: []string{"windows"},
+		Executors: []entity.Executor{
+			{Name: "systeminfo", Type: "cmd", Platform: "windows", Command: "systeminfo", Timeout: 300},
+			{Name: "generic", Type: "bash", Command: "hostname", Timeout: 300},
+		},
+	}
+	svc := application.NewTechniqueService(repo)
+	handler := NewTechniqueHandler(svc)
+
+	router := gin.New()
+	router.GET("/techniques/:id/executors", handler.GetExecutors)
+
+	// Test: requesting linux on a windows-only technique returns empty
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/techniques/T1082/executors?platform=linux", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	var executors []entity.Executor
+	if err := json.Unmarshal(w.Body.Bytes(), &executors); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if len(executors) != 0 {
+		t.Errorf("Expected 0 executors for unsupported platform, got %d", len(executors))
+	}
+}
+
+func TestTechniqueHandler_GetExecutors_NotFound(t *testing.T) {
+	repo := newMockTechniqueRepo()
+	svc := application.NewTechniqueService(repo)
+	handler := NewTechniqueHandler(svc)
+
+	router := gin.New()
+	router.GET("/techniques/:id/executors", handler.GetExecutors)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/techniques/missing/executors", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}

@@ -114,6 +114,8 @@ func main() {
 		fmt.Printf("Filtered to %d safe techniques (from %d total)\n", len(filtered), len(merged))
 		merged = filtered
 		stats.ExecutorsTotal = filteredExecutors
+		stats.SafeCount = len(filtered)
+		stats.UnsafeCount = 0
 	}
 
 	if *dryRun {
@@ -164,12 +166,18 @@ func downloadFile(url, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 
-	if _, err = io.Copy(out, resp.Body); err != nil {
-		return err
+	var writeErr error
+	defer func() {
+		if cerr := out.Close(); writeErr == nil {
+			writeErr = cerr
+		}
+	}()
+
+	if _, writeErr = io.Copy(out, resp.Body); writeErr != nil {
+		return writeErr
 	}
-	return out.Close()
+	return writeErr
 }
 
 // cloneAtomics performs a shallow git clone of the Atomic Red Team repository

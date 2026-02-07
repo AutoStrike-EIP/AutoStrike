@@ -4394,12 +4394,9 @@ func TestTechniqueRepository_FindByID_NullTacticsAndReferences(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindByID failed: %v", err)
 	}
-	// Tactics should be nil (not set)
-	if found.Tactics != nil && len(found.Tactics) > 0 {
-		// empty slice from JSON marshal is ok
-		if len(found.Tactics) > 0 && found.Tactics[0] != "" {
-			t.Errorf("Expected nil/empty tactics for legacy technique, got %v", found.Tactics)
-		}
+	// Tactics should be nil or empty (not set)
+	if len(found.Tactics) > 0 && found.Tactics[0] != "" {
+		t.Errorf("Expected nil/empty tactics for legacy technique, got %v", found.Tactics)
 	}
 }
 

@@ -1,15 +1,15 @@
 # 🔥 **AutoStrike**
 
 <div align="center">
-  <a href="https://github.com/{{REPO_NAME}}">
+  <a href="https://github.com/AutoStrike">
     <img width="100%" src="/docs/assets/Autostrike%20complet_Bannière.svg" alt="@AutoStrike's banner">
   </a>
   <br>
-  <a href="https://github.com/{{REPO_NAME}}/issues">
-    <img src="https://img.shields.io/github/issues/{{REPO_NAME}}?color=0088ff&style=for-the-badge&logo=github" alt="AutoStrike's issues"/>
+  <a href="https://github.com/AutoStrike/issues">
+    <img src="https://img.shields.io/github/issues/AutoStrike?color=0088ff&style=for-the-badge&logo=github" alt="AutoStrike's issues"/>
   </a>
-  <a href="https://github.com/{{REPO_NAME}}/pulls">
-    <img src="https://img.shields.io/github/issues-pr/{{REPO_NAME}}?color=0088ff&style=for-the-badge&logo=github"  alt="AutoStrike's pull requests"/>
+  <a href="https://github.com/AutoStrike/pulls">
+    <img src="https://img.shields.io/github/issues-pr/AutoStrike?color=0088ff&style=for-the-badge&logo=github"  alt="AutoStrike's pull requests"/>
   </a>
 </div>
 

@@ -1,0 +1,28 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - release-**
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # - name: Install dependencies
+      #   with:
+      #     toolchain: stable
+
+      # - name: Run linter
+      #   run: ...
+
+      # - name: Build project
+      #   run: ...
+
+      # - name: Run tests
+      #   run: ...

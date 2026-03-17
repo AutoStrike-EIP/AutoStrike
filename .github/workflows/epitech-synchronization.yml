@@ -1,0 +1,48 @@
+name: Epitech Mirroring
+
+on:
+  # Runs on pushes on main or release-*
+  push:
+    branches:
+      - "main"
+      - "release-**"
+  # Runs on wiki updates
+  gollum:
+
+jobs:
+  synchronize-repository:
+    name: Synchronize Repository
+    if: github.repository == vars.CURRENT_REPO && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checking out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Synchronizing repository to mirror
+        uses: pixta-dev/repository-mirroring-action@v1
+        with:
+          target_repo_url: git@github.com:${{ vars.MIRROR_REPO }}.git
+          ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+
+  synchronize-wiki:
+    name: Synchronize Wiki
+    if: github.repository == vars.CURRENT_REPO && github.event_name == 'gollum'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Setup SSH key
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+
+    - name: Checkout wiki repository
+      run: |
+        git clone --mirror "git@github.com:${{ github.repository }}.wiki.git" wiki
+
+    - name: Synchronize wiki to mirror
+      run: |
+        cd wiki;
+        git push --mirror "git@github.com:${{ vars.MIRROR_REPO }}.wiki.git";

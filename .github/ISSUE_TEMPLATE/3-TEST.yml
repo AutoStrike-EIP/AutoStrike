@@ -1,0 +1,48 @@
+name: TEST
+title: "[TEST]"
+description: Request for adding tests
+projects: "AutoStrike-EIP/5"
+labels: ["test"]
+body:
+  - type: input
+    id: test_description
+    attributes:
+      label: Describe the feature to test
+      description: A description of which feature those tests are related to.
+      placeholder: "ex: The ProfileCard component."
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Which tests
+      description: "All tests to make on this feature"
+      placeholder: List all the tests to make here
+      value: |
+        - [ ] With a 16x16 profile picture
+        - [ ] With a 128x128 profile picture
+        - [ ] With a long bio (more than 128 characters)
+        - ...
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: Add any other context about the feature to be tested here.
+      placeholder: |
+        ex:
+        - Screenshots
+        - logs
+        - Any other relevant information.
+  - type: checkboxes
+    attributes:
+      label: Pre-submission checklist
+      description: "Please ensure you have completed the following before submitting your tests request:"
+      options:
+        - label: I have SET the appropriate label
+          required: true
+        - label: I have UNSET the issue tag
+          required: true
+        - label: I have SET the appropriate project
+          required: true
+        - label: I have SET the appropriate milestone
+          required: true
+    validations:
+      required: true

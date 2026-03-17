@@ -1,0 +1,8 @@
+# These owners will be the default owners for everything in
+# the repo. Unless a later match takes precedence,
+# @AutoStrike-EIP will be requested for
+# review when someone opens a pull request.
+# if you want to add more owners, just write it after @AutoStrike-EIP
+*       @AutoStrike-EIP
+        @eliestroun14
+        @nL1x

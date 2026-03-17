@@ -1,0 +1,28 @@
+name: Setup Template
+on:
+  - push
+
+jobs:
+  setup:
+    if: github.run_number == 1
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replace the repository name
+        run: |
+          REPO_NAME=${{ github.event.repository.name }}
+          sed -i "s/{{REPO_NAME}}/$REPO_NAME/g" README.md
+          sed -i "s/{{REPO_NAME}}/$REPO_NAME/g" CODE_OF_CONDUCT.md
+          sed -i "s/{{REPO_NAME}}/$REPO_NAME/g" CHANGELOG.md
+          sed -i "s/{{REPO_NAME}}/$REPO_NAME/g" CONTRIBUTING.md
+          sed -i "s/{{REPO_NAME}}/$REPO_NAME/g" LICENSE
+          sed -i "s/{{REPO_NAME}}/$REPO_NAME/g" SECURITY.md
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md
+          git commit -m "Project init"
+          git push

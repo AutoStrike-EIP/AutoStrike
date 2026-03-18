@@ -1,6 +1,6 @@
 name: TEST
 title: "[TEST]"
-description: Request for adding tests
+description: Request for additional tests
 projects: "AutoStrike-EIP/5"
 labels: ["test"]
 body:

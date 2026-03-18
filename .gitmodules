@@ -1,0 +1,12 @@
+[submodule "Dashboard"]
+	path = Dashboard
+	url = git@github.com:AutoStrike-EIP/Dashboard.git
+[submodule "Proxy"]
+	path = Proxy
+	url = git@github.com:AutoStrike-EIP/Proxy.git
+[submodule "Server"]
+	path = Server
+	url = git@github.com:AutoStrike-EIP/Server.git
+[submodule "Agent"]
+	path = Agent
+	url = git@github.com:AutoStrike-EIP/Agent.git

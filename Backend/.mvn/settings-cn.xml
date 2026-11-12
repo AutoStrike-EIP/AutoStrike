@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Miroir Maven optionnel pour les réseaux où Maven Central est lent ou injoignable
+  (Chine continentale notamment). N'est PAS appliqué par défaut :
+
+      ./mvnw -s .mvn/settings-cn.xml verify
+
+  Alternative si celui-ci est lent : https://maven.aliyun.com/repository/public
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+  <mirrors>
+    <mirror>
+      <id>huaweicloud</id>
+      <name>Huawei Cloud Maven mirror</name>
+      <url>https://repo.huaweicloud.com/repository/maven/</url>
+      <mirrorOf>central</mirrorOf>
+    </mirror>
+  </mirrors>
+</settings>

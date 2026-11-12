@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:autostrike;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  rabbitmq:
+    listener:
+      simple:
+        # Pas de broker pendant les tests : le listener est appelé directement.
+        auto-startup: false

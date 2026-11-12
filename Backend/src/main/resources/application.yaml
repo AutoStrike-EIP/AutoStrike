@@ -1,0 +1,31 @@
+server:
+  port: ${SERVER_PORT:3001}
+
+spring:
+  application:
+    name: autostrike-backend
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/autostrike}
+    username: ${DATABASE_USERNAME:autostrike}
+    password: ${DATABASE_PASSWORD:autostrike}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        # Un message illisible est rejeté sans requeue (pas de boucle infinie) ;
+        # à remplacer par une DLQ quand elle sera définie (ARCHITECTURE.md §6).
+        default-requeue-rejected: false
+
+autostrike:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  rabbitmq:
+    exchange: ${RABBITMQ_EXCHANGE:autostrike.events}
+    queue: backend_notifications

@@ -6,7 +6,7 @@ Spring Boot 4 + Java 21. Voir `docs/ARCHITECTURE.md` pour la vue d'ensemble.
 ## Prérequis
 
 - JDK 21
-- PostgreSQL et RabbitMQ (`docker compose up -d` démarre les deux en local)
+- PostgreSQL (`../Database`, `docker compose up -d`) et RabbitMQ (`Broker/` à la racine du repo)
 
 Maven n'a pas besoin d'être installé : le wrapper `./mvnw` s'en charge.
 

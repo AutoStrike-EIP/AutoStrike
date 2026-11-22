@@ -12,6 +12,9 @@ run-manager:
 run-transmitter:
 	$(BUILDER) run --bin task-transmitter
 
+lint:
+	$(BUILDER) clippy
+
 clean:
 	$(BUILDER) clean
 

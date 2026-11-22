@@ -1,0 +1,9 @@
+services:
+  broker:
+    image: rabbitmq:4.4.0-management
+    hostname: autostrike-broker
+    container_name: autostrike-broker
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+

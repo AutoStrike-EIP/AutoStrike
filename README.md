@@ -31,19 +31,49 @@ It is with this in mind that AutoStrike was created: Identify your vulnerabiliti
 
 ## ⚡ **Installation**
 
-* <!-- ... [SHOW HOW YOUR PROJECT IS INSTALLED] -->
+Seul [Docker](https://docs.docker.com/get-docker/) (avec Docker Compose) est nécessaire pour lancer le projet.
+
+```bash
+cp .env.example .env   # réglages locaux, ex. miroir Maven sur un réseau lent
+```
 
 ---
 
 ## 🚀 **Usage**
 
-* <!-- ... [SHOW HOW YOUR PROJECT IS USED] -->
+Depuis la racine du repo, une seule commande lance toute la stack :
+
+```bash
+docker compose up --build
+```
+
+| Service | URL |
+|---|---|
+| Dashboard | http://localhost:3000 |
+| API (Back-end) | http://localhost:3001 |
+| RabbitMQ (management) | http://localhost:15672 (guest/guest) |
+| PostgreSQL | localhost:5432 (autostrike/autostrike) |
+
+`docker compose down` arrête tout ; `docker compose down -v` efface aussi la base.
+Identifiants de développement uniquement.
+
+Le Task Manager et le Task Transmitter (Rust, `Server/`) ne sont pas encore dans le compose.
 
 ---
 
 ## 🌲 **Project tree**
 
-<!-- ... [SHOW YOUR PROJECT TREE HERE IF USEFUL] -->
+```text
+.
+├── Dashboard/
+│   ├── Frontend/    # Next.js — interface web
+│   ├── Backend/     # Spring Boot — API REST + WebSocket
+│   └── Database/    # PostgreSQL local, notes de schéma
+├── Server/          # Rust — Task Manager, Task Transmitter
+├── Agent/           # Rust — agent déployé sur les cibles
+├── docs/            # Architecture et décisions techniques
+└── compose.yaml     # Lance toute la stack
+```
 
 ---
 

@@ -10,11 +10,10 @@ Tout ce qui sert l'interface web d'AutoStrike, regroupé au même endroit :
 
 ## Lancer l'ensemble en local
 
+Depuis la racine du repo, tout se lance avec Docker (base, broker, back, front) :
+
 ```bash
-cd Database && docker compose up -d            # PostgreSQL
-cd ../../Broker && docker compose up -d        # RabbitMQ (branche serveur, PR #23)
-cd ../Dashboard/Backend && ./mvnw spring-boot:run   # API sur http://localhost:3001
-cd ../Frontend && npm install && npm run dev        # UI sur http://localhost:3000
+docker compose up --build
 ```
 
-Chaque dossier a son propre README avec ses commandes de build, de test et de lint.
+Pour développer un seul composant sans Docker, voir le README de son dossier.

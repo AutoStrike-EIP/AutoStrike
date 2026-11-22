@@ -1,5 +1,6 @@
 # PostgreSQL local pour le développement (pas pour la production).
 #   docker compose up -d
+# Aussi inclus par le compose.yaml à la racine du repo, qui lance toute la stack.
 # Identifiants de dev uniquement, alignés sur les valeurs par défaut de Backend/src/main/resources/application.yaml.
 services:
   postgres:
@@ -13,6 +14,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autostrike -d autostrike"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   postgres-data:

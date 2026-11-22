@@ -6,9 +6,9 @@ use lapin::options::BasicAckOptions;
 use lapin::types::ShortString;
 use tokio::task::JoinHandle;
 
-use super::types::{EventCallbackFn, EventPayload};
-use super::{AddressParams};
+use super::AddressParams;
 use super::rabbitmq::RabbitMQService;
+use super::types::{EventCallbackFn, EventPayload};
 
 pub struct EventManager {
     unknown_callback: Box<dyn EventCallbackFn>,

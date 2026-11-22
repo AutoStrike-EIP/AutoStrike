@@ -1,7 +1,7 @@
 mod manager;
-mod types;
 mod rabbitmq;
+mod types;
 
 pub use manager::EventManager;
-pub use types::{EventPayload, EventCallbackFn};
 pub use rabbitmq::AddressParams;
+pub use types::{EventCallbackFn, EventPayload};

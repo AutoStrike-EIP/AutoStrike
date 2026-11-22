@@ -44,6 +44,7 @@ public class ScenarioController {
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED)
   public ScenarioResponse launch(@Valid @RequestBody CreateScenarioRequest request) {
-    return ScenarioResponse.from(campaigns.launch(request.name()));
+    return ScenarioResponse.from(
+        campaigns.launch(request.templateId(), request.name(), request.campaignTargets()));
   }
 }

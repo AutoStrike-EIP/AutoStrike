@@ -35,26 +35,69 @@ Pour ne pas répéter `-s` à chaque commande, copier ce fichier en `~/.m2/setti
 
 | Route | Rôle |
 |---|---|
-| `GET /scenarios` | Liste des scénarios, du plus récent au plus ancien |
+| `GET /scenario-templates` | Modèles de scénarios disponibles et leur chaîne de techniques MITRE |
+| `GET /scenarios` | Liste des scénarios lancés, du plus récent au plus ancien |
 | `GET /scenarios/{id}` | Un scénario (404 s'il n'existe pas) |
-| `POST /scenarios` | Lance un scénario — corps `{"name": "..."}`, réponse 201 |
+| `POST /scenarios` | Lance un scénario, réponse 201 (corps ci-dessous) |
 | `WS /scenarios` | Pousse `{"type": "scenario.updated", "payload": <scénario>}` à chaque création ou changement de statut |
 
-Un scénario : `{id, name, status, createdAt, updatedAt}`, `status` parmi
+Corps de `POST /scenarios` :
+
+```json
+{
+  "templateId": "linux-basic-v1",
+  "name": "Audit poste RH",
+  "targets": [
+    { "host": "10.0.0.12", "criticality": "PRODUCTION" },
+    { "host": "lab-web.local", "criticality": "TEST" }
+  ]
+}
+```
+
+- `name` est facultatif : le nom du modèle est utilisé s'il est absent.
+- 1 à 50 cibles ; `host` limité aux caractères d'un nom DNS ou d'une IP (`A-Z a-z 0-9 . : -`).
+- `criticality` : `PRODUCTION` ou `TEST`. Elle départage les résultats à profondeur égale dans
+  la priorisation (filtre à étages, étage 2).
+
+Un scénario : `{id, name, templateId, targets, status, createdAt, updatedAt}`, `status` parmi
 `CREATED`, `RUNNING`, `SUCCESS`, `FAILED`, dates en ISO-8601 UTC.
 
-`POST /scenarios` répond 400 si `name` est vide et 503 si RabbitMQ est injoignable
-(le scénario est alors enregistré en `FAILED`).
+`POST /scenarios` répond 400 si la requête est invalide (modèle inconnu, aucune cible, hôte ou
+criticité invalide) et 503 si RabbitMQ est injoignable (le scénario est alors enregistré en
+`FAILED`).
+
+Un seul modèle existe pour l'instant, `linux-basic-v1` : le scénario v1 du livrable « Scénario
+de campagne v1 (Linux, basique) » (T1087.001 → T1552.001 → T1053.003).
 
 ## RabbitMQ
 
-- Exchange direct durable `autostrike.events` (variable `RABBITMQ_EXCHANGE`).
-- Publie `campaign.created` (JSON persistant, même forme que le scénario ci-dessus).
+- Exchange **topic** durable `autostrike.events` (variable `RABBITMQ_EXCHANGE`), déclaré
+  à l'identique par le serveur Rust (`Server/common/src/event`). Un type différent d'un côté
+  ferait échouer la déclaration de l'autre (`PRECONDITION_FAILED`).
+- Publie `campaign.created` (JSON persistant) avec le schéma de campagne du livrable, en
+  snake_case :
+
+  ```json
+  {
+    "campaign": {
+      "id": "…", "name": "Audit poste RH", "template": "linux-basic-v1", "mode": "non-destructive",
+      "target_hosts": [{ "host": "10.0.0.12", "criticality": "PRODUCTION" }],
+      "tasks": [
+        { "order": 1, "technique": "T1087.001", "action": "list_local_accounts" },
+        { "order": 2, "technique": "T1552.001", "action": "grep_credentials_in_files", "depends_on": 1 },
+        { "order": 3, "technique": "T1053.003", "action": "cron_persistence_test", "depends_on": 2, "cleanup": true }
+      ]
+    }
+  }
+  ```
+
+  Écart au livrable : `target_hosts` contient des objets `{host, criticality}` et non de simples
+  chaînes, pour que la criticité arrive jusqu'à la priorisation.
 - Lit la queue durable `backend_notifications`, liée à `campaign.updated` et `task.updated`.
   Sur `campaign.updated`, seul le champ `id` du message est lu : le Back-end relit la campagne
   en base et la diffuse sur le WebSocket. `task.updated` est ignoré pour l'instant.
 
-Le nom de l'exchange et le format des messages sont provisoires (ticket #20).
+Le format des messages reste provisoire (ticket #20).
 
 ## Configuration
 

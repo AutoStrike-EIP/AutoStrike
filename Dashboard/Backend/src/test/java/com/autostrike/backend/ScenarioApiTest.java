@@ -10,6 +10,7 @@ import com.autostrike.backend.campaign.CampaignRepository;
 import com.autostrike.backend.config.RabbitConfig;
 import com.autostrike.backend.messaging.BackendNotificationsListener;
 import com.autostrike.backend.messaging.CampaignEventPublisher;
+import com.autostrike.backend.scenario.ScenarioTemplate;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -66,23 +67,76 @@ class ScenarioApiTest {
 
   @Test
   void postCreatesScenarioAndAnnouncesItToTheTaskManager() throws Exception {
-    HttpResponse<String> response = post("{\"name\":\"Port scan\"}");
+    HttpResponse<String> response =
+        post(
+            """
+            {"templateId": "linux-basic-v1", "name": "Audit poste RH",
+             "targets": [{"host": "10.0.0.12", "criticality": "PRODUCTION"},
+                         {"host": "lab-web.local", "criticality": "TEST"}]}
+            """);
 
     assertThat(response.statusCode()).isEqualTo(201);
     JsonNode body = jsonMapper.readTree(response.body());
     assertThat(body.get("id").asString()).isNotBlank();
-    assertThat(body.get("name").asString()).isEqualTo("Port scan");
+    assertThat(body.get("name").asString()).isEqualTo("Audit poste RH");
+    assertThat(body.get("templateId").asString()).isEqualTo("linux-basic-v1");
     assertThat(body.get("status").asString()).isEqualTo("CREATED");
+    JsonNode targets = body.get("targets");
+    assertThat(targets.size()).isEqualTo(2);
+    assertThat(targets.get(0).get("host").asString()).isEqualTo("10.0.0.12");
+    assertThat(targets.get(0).get("criticality").asString()).isEqualTo("PRODUCTION");
+    assertThat(targets.get(1).get("host").asString()).isEqualTo("lab-web.local");
     assertThat(body.get("createdAt").asString()).matches("\\d{4}-\\d{2}-\\d{2}T.*Z");
     assertThat(body.get("updatedAt").asString()).matches("\\d{4}-\\d{2}-\\d{2}T.*Z");
-    verify(publisher).campaignCreated(any(Campaign.class));
+    verify(publisher).campaignCreated(any(Campaign.class), any(ScenarioTemplate.class));
+  }
+
+  @Test
+  void postUsesTheTemplateNameWhenNoNameIsGiven() throws Exception {
+    HttpResponse<String> response =
+        post(
+            """
+            {"templateId": "linux-basic-v1",
+             "targets": [{"host": "10.0.0.12", "criticality": "TEST"}]}
+            """);
+
+    assertThat(response.statusCode()).isEqualTo(201);
+    assertThat(jsonMapper.readTree(response.body()).get("name").asString())
+        .isEqualTo("Linux basique (v1)");
+  }
+
+  @Test
+  void postRejectsInvalidRequests() throws Exception {
+    String unknownTemplate =
+        """
+        {"templateId": "nope", "targets": [{"host": "h", "criticality": "TEST"}]}
+        """;
+    String noTarget =
+        """
+        {"templateId": "linux-basic-v1", "targets": []}
+        """;
+    String forbiddenHostCharacters =
+        """
+        {"templateId": "linux-basic-v1",
+         "targets": [{"host": "h; rm -rf /", "criticality": "TEST"}]}
+        """;
+    String missingCriticality =
+        """
+        {"templateId": "linux-basic-v1", "targets": [{"host": "h"}]}
+        """;
+
+    assertThat(post(unknownTemplate).statusCode()).isEqualTo(400);
+    assertThat(post(noTarget).statusCode()).isEqualTo(400);
+    assertThat(post(forbiddenHostCharacters).statusCode()).isEqualTo(400);
+    assertThat(post(missingCriticality).statusCode()).isEqualTo(400);
+    assertThat(repository.count()).isZero();
   }
 
   @Test
   void getReturnsScenariosMostRecentFirst() throws Exception {
-    post("{\"name\":\"first\"}");
+    launch("first");
     Thread.sleep(5);
-    post("{\"name\":\"second\"}");
+    launch("second");
 
     HttpResponse<String> response = get("/scenarios");
 
@@ -90,12 +144,13 @@ class ScenarioApiTest {
     JsonNode body = jsonMapper.readTree(response.body());
     assertThat(body.size()).isEqualTo(2);
     assertThat(body.get(0).get("name").asString()).isEqualTo("second");
+    assertThat(body.get(0).get("targets").size()).isEqualTo(1);
     assertThat(body.get(1).get("name").asString()).isEqualTo("first");
   }
 
   @Test
   void getByIdReturnsTheScenarioOr404() throws Exception {
-    String id = jsonMapper.readTree(post("{\"name\":\"one\"}").body()).get("id").asString();
+    String id = jsonMapper.readTree(launch("one").body()).get("id").asString();
 
     assertThat(jsonMapper.readTree(get("/scenarios/" + id).body()).get("name").asString())
         .isEqualTo("one");
@@ -103,18 +158,25 @@ class ScenarioApiTest {
   }
 
   @Test
-  void postRejectsBlankName() throws Exception {
-    assertThat(post("{\"name\":\"  \"}").statusCode()).isEqualTo(400);
-    assertThat(repository.count()).isZero();
+  void getScenarioTemplatesListsTheLinuxBasicChain() throws Exception {
+    HttpResponse<String> response = get("/scenario-templates");
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    JsonNode template = jsonMapper.readTree(response.body()).get(0);
+    assertThat(template.get("id").asString()).isEqualTo("linux-basic-v1");
+    JsonNode steps = template.get("steps");
+    assertThat(steps.size()).isEqualTo(3);
+    assertThat(steps.get(2).get("technique").asString()).isEqualTo("T1053.003");
+    assertThat(steps.get(2).get("cleanup").asBoolean()).isTrue();
   }
 
   @Test
   void postFailsScenarioWhenBrokerIsDown() throws Exception {
     doThrow(new AmqpConnectException(new RuntimeException("broker down")))
         .when(publisher)
-        .campaignCreated(any(Campaign.class));
+        .campaignCreated(any(Campaign.class), any(ScenarioTemplate.class));
 
-    assertThat(post("{\"name\":\"lost\"}").statusCode()).isEqualTo(503);
+    assertThat(launch("lost").statusCode()).isEqualTo(503);
 
     JsonNode body = jsonMapper.readTree(get("/scenarios").body());
     assertThat(body.get(0).get("status").asString()).isEqualTo("FAILED");
@@ -124,7 +186,7 @@ class ScenarioApiTest {
   void websocketBroadcastsCreationThenStatusChanges() throws Exception {
     BlockingQueue<String> received = connectWebSocket();
 
-    String id = jsonMapper.readTree(post("{\"name\":\"live\"}").body()).get("id").asString();
+    String id = jsonMapper.readTree(launch("live").body()).get("id").asString();
     JsonNode created = jsonMapper.readTree(received.poll(5, TimeUnit.SECONDS));
     assertThat(created.get("type").asString()).isEqualTo("scenario.updated");
     assertThat(created.get("payload").get("id").asString()).isEqualTo(id);
@@ -140,6 +202,7 @@ class ScenarioApiTest {
     assertThat(updated.get("type").asString()).isEqualTo("scenario.updated");
     assertThat(updated.get("payload").get("id").asString()).isEqualTo(id);
     assertThat(updated.get("payload").get("status").asString()).isEqualTo("FAILED");
+    assertThat(updated.get("payload").get("targets").size()).isEqualTo(1);
   }
 
   @Test
@@ -149,6 +212,16 @@ class ScenarioApiTest {
     listener.onMessage(notification(RabbitConfig.TASK_UPDATED, "{\"id\":\"whatever\"}"));
 
     assertThat(received.poll(300, TimeUnit.MILLISECONDS)).isNull();
+  }
+
+  /** Lance le scénario Linux v1 sur un hôte de test. */
+  private HttpResponse<String> launch(String name) throws Exception {
+    return post(
+        """
+        {"templateId": "linux-basic-v1", "name": "%s",
+         "targets": [{"host": "10.0.0.1", "criticality": "TEST"}]}
+        """
+            .formatted(name));
   }
 
   private HttpResponse<String> post(String json) throws Exception {

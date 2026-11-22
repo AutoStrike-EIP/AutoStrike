@@ -3,7 +3,7 @@ package com.autostrike.backend.messaging;
 import com.autostrike.backend.campaign.Campaign;
 import com.autostrike.backend.config.AutostrikeProperties;
 import com.autostrike.backend.config.RabbitConfig;
-import com.autostrike.backend.web.ScenarioResponse;
+import com.autostrike.backend.scenario.ScenarioTemplate;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageDeliveryMode;
@@ -31,9 +31,10 @@ public class RabbitCampaignEventPublisher implements CampaignEventPublisher {
   }
 
   @Override
-  public void campaignCreated(Campaign campaign) {
+  public void campaignCreated(Campaign campaign, ScenarioTemplate template) {
     Message message =
-        MessageBuilder.withBody(jsonMapper.writeValueAsBytes(ScenarioResponse.from(campaign)))
+        MessageBuilder.withBody(
+                jsonMapper.writeValueAsBytes(CampaignCreatedMessage.of(campaign, template)))
             .setContentType(MessageProperties.CONTENT_TYPE_JSON)
             .setDeliveryMode(MessageDeliveryMode.PERSISTENT)
             .build();

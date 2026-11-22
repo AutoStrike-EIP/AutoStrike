@@ -1,0 +1,50 @@
+# Lance toute la stack AutoStrike en local :
+#   docker compose up --build
+# Dashboard : http://localhost:3000 · API : http://localhost:3001 · RabbitMQ : http://localhost:15672 (guest/guest)
+#
+# Identifiants de développement uniquement. Réglages par machine (miroirs, etc.) : voir .env.example.
+name: autostrike
+
+include:
+  - Dashboard/Database/compose.yaml
+
+services:
+  rabbitmq:
+    image: rabbitmq:4.4.0-management
+    container_name: autostrike-broker
+    hostname: autostrike-broker
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: Dashboard/Backend
+      args:
+        MAVEN_ARGS: ${MAVEN_ARGS:-}
+    container_name: autostrike-backend
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/autostrike
+      RABBITMQ_HOST: rabbitmq
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: Dashboard/Frontend
+    container_name: autostrike-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend

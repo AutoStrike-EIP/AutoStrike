@@ -1,0 +1,24 @@
+# PostgreSQL local pour le développement (pas pour la production).
+#   docker compose up -d
+# Aussi inclus par le compose.yaml à la racine du repo, qui lance toute la stack.
+# Identifiants de dev uniquement, alignés sur les valeurs par défaut de Backend/src/main/resources/application.yaml.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: autostrike-postgres
+    environment:
+      POSTGRES_DB: autostrike
+      POSTGRES_USER: autostrike
+      POSTGRES_PASSWORD: autostrike
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autostrike -d autostrike"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:

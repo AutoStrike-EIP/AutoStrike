@@ -1,0 +1,13 @@
+max_width = 100                     # Default : 100
+use_small_heuristics = "Max"        # Default : "Default"
+match_block_trailing_comma = true   # Default : false
+use_try_shorthand = true            # Default : false
+use_field_init_shorthand = true     # Default : false
+
+# WARNING: Unstable options (requires `cargo +nightly fmt`)
+# required_version = "1.10.0"         # Default : undefined
+# format_generated_files = true       # Default : false
+# normalize_doc_attributes = true     # Default : false
+# group_imports = "StdExternalCrate"  # Default : "Preserve"
+# reorder_impl_items = true           # Default : false
+# brace_style = "AlwaysNextLine"      # Default : "SameLineWhere"

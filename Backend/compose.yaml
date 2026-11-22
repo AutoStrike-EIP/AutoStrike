@@ -1,0 +1,23 @@
+# Dépendances locales du Back-end pour le développement (pas pour la production).
+#   docker compose up -d
+# Identifiants de dev uniquement, alignés sur les valeurs par défaut de application.yaml.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: autostrike
+      POSTGRES_USER: autostrike
+      POSTGRES_PASSWORD: autostrike
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672" # UI de management : http://localhost:15672 (guest/guest)
+
+volumes:
+  postgres-data:

@@ -1,19 +1,23 @@
-pub mod address_params;
-pub mod route_params;
-
-use lapin::{BasicProperties, Channel, ChannelState, Connection, ConnectionProperties, ConnectionState, ExchangeKind};
-use lapin::options::{BasicPublishOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions};
+use lapin::options::{
+    BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions, QueueBindOptions,
+    QueueDeclareOptions,
+};
 use lapin::types::{FieldTable, ShortString};
-pub use address_params::{AddressParams};
+use lapin::{
+    BasicProperties, Channel, ChannelState, Connection, ConnectionProperties, ConnectionState,
+    Consumer, ExchangeKind,
+};
 
-pub struct RabbitMQ {
+pub use super::address_params::AddressParams;
+
+pub struct RabbitMQService {
     uri: String,
     connection: Option<Connection>,
     channel: Option<Channel>,
     exchange_name: ShortString,
 }
 
-impl RabbitMQ {
+impl RabbitMQService {
     /// Create a new instance of RabbitMQ with a specific queue and a specific address.
     ///
     /// # Arguments
@@ -21,33 +25,20 @@ impl RabbitMQ {
     /// * `address_params`: The uri parameters of the RabbitMQ connection.
     ///
     /// # Returns
-    /// An instance of [`RabbitMQ`]
+    /// An instance of [`RabbitMQService`]
     ///
     /// # Examples
     /// ```
-    /// use common::broker::rabbitmq::{AddressParams, RabbitMQ};
+    /// use common::broker::rabbitmq::{AddressParams, RabbitMQService};
     ///
-    /// let params = AddressParams {
-    ///     ..AddressParams::default(),
-    ///     host: "localhost",
-    ///     port: 5672,
-    ///     user: "guest",
-    ///     password: "guest",
-    /// };
+    /// let params = AddressParams::default();
     ///
-    /// RabbitMQ::new(params, "my-service-queue");
+    /// RabbitMQService::new(params, "my-service-exchange");
     /// ```
     pub fn new(address_params: AddressParams, exchange_name: &str) -> Self {
-        let string_connection = format!(
-            "amqp://{}:{}@{}:{}/{}",
-            address_params.user,
-            address_params.password,
-            address_params.host,
-            address_params.port,
-            address_params.vhost
-        );
+        let string_connection = address_params.to_string();
 
-        RabbitMQ {
+        RabbitMQService {
             uri: string_connection,
             connection: None,
             channel: None,
@@ -69,8 +60,8 @@ impl RabbitMQ {
     /// See [struct.Connection.html](https://docs.rs/lapin/4.12.3/lapin/struct.Connection.html#method.connect)
     pub async fn connect_as(&mut self, connection_name: &str) -> lapin::Result<&mut Self> {
         let uri = self.uri.as_str();
-        let properties = ConnectionProperties::default()
-            .with_connection_name(connection_name.into());
+        let properties =
+            ConnectionProperties::default().with_connection_name(connection_name.into());
 
         let connection = Connection::connect(uri, properties).await?;
         self.connection = Some(connection);
@@ -89,7 +80,8 @@ impl RabbitMQ {
     /// Throw an error [`lapin::Error`] if no connection has been made.
     async fn create_channel(&mut self) -> lapin::Result<&mut Self> {
         // Checks if the connection exists
-        let connection = self.connection
+        let connection = self
+            .connection
             .as_ref()
             .ok_or(lapin::ErrorKind::InvalidConnectionState(ConnectionState::Closed))?;
 
@@ -123,9 +115,10 @@ impl RabbitMQ {
     /// * the queue already exists with different options.
     pub async fn ensure_queue_exists(&self, queue_name: &str) -> lapin::Result<&Self> {
         // Checks if the channel exists
-        let channel = self.channel
-            .as_ref()
-            .ok_or(lapin::ErrorKind::InvalidChannelState(ChannelState::Closed, "ensure_queue_exists"))?;
+        let channel = self.channel.as_ref().ok_or(lapin::ErrorKind::InvalidChannelState(
+            ChannelState::Closed,
+            "ensure_queue_exists",
+        ))?;
 
         let queue_options = QueueDeclareOptions {
             durable: true,
@@ -134,11 +127,7 @@ impl RabbitMQ {
             ..QueueDeclareOptions::default()
         };
 
-        channel.queue_declare(
-            queue_name.into(),
-            queue_options,
-            FieldTable::default()
-        ).await?;
+        channel.queue_declare(queue_name.into(), queue_options, FieldTable::default()).await?;
 
         Ok(self)
     }
@@ -165,22 +154,17 @@ impl RabbitMQ {
     /// * the exchange already exists with different options.
     async fn ensure_exchange_exists(&self, exchange_name: &str) -> lapin::Result<&Self> {
         // Checks if the channel exists
-        let channel = self.channel
-            .as_ref()
-            .ok_or(lapin::ErrorKind::InvalidChannelState(ChannelState::Closed, "ensure_exchange_exists"))?;
+        let channel = self.channel.as_ref().ok_or(lapin::ErrorKind::InvalidChannelState(
+            ChannelState::Closed,
+            "ensure_exchange_exists",
+        ))?;
 
         let kind = ExchangeKind::Topic;
-        let options = ExchangeDeclareOptions {
-            durable: true,
-            ..ExchangeDeclareOptions::default()
-        };
+        let options = ExchangeDeclareOptions { durable: true, ..ExchangeDeclareOptions::default() };
 
-        channel.exchange_declare(
-            exchange_name.into(),
-            kind,
-            options,
-            FieldTable::default()
-        ).await?;
+        channel
+            .exchange_declare(exchange_name.into(), kind, options, FieldTable::default())
+            .await?;
 
         Ok(self)
     }
@@ -203,17 +187,20 @@ impl RabbitMQ {
     /// * the exchange already exists with different options.
     pub async fn bind_event(&self, queue_name: &str, event_name: &str) -> lapin::Result<&Self> {
         // Checks if the channel exists
-        let channel = self.channel
-            .as_ref()
-            .ok_or(lapin::ErrorKind::InvalidChannelState(ChannelState::Closed, "ensure_exchange_exists"))?;
+        let channel = self.channel.as_ref().ok_or(lapin::ErrorKind::InvalidChannelState(
+            ChannelState::Closed,
+            "ensure_exchange_exists",
+        ))?;
 
-        channel.queue_bind(
-            queue_name.into(),
-            self.exchange_name.clone(),
-            event_name.into(),
-            QueueBindOptions::default(),
-            FieldTable::default()
-        ).await?;
+        channel
+            .queue_bind(
+                queue_name.into(),
+                self.exchange_name.clone(),
+                event_name.into(),
+                QueueBindOptions::default(),
+                FieldTable::default(),
+            )
+            .await?;
 
         Ok(self)
     }
@@ -232,7 +219,8 @@ impl RabbitMQ {
     /// * the exchange already exists with different options.
     pub async fn publish_event(&self, event_name: &str, payload: &[u8]) -> lapin::Result<&Self> {
         // Checks if the channel exists
-        let channel = self.channel
+        let channel = self
+            .channel
             .as_ref()
             .ok_or(lapin::ErrorKind::InvalidChannelState(ChannelState::Closed, "publish"))?;
 
@@ -244,10 +232,46 @@ impl RabbitMQ {
                 payload,
                 BasicProperties::default(),
             )
-            .await?  // Publish message
+            .await? // Publish message
             .await?; // Wait for rabbit-mq to receive the message
 
         Ok(self)
     }
 
+    /// Create a new consumer for the queue `queue_name`.
+    ///
+    /// # Arguments
+    /// * `queue_name` - The name of the queue where the messages will be consumed.
+    /// * `consumer_tag` - The consumer tag that will appear on the RabbitMQ dashboard.
+    ///
+    /// # Errors
+    ///
+    /// Throw an error [`lapin::Error`] if :
+    /// * no connection has been made.
+    /// * an error occurred while creating the consumer.
+    ///
+    /// # Returns
+    /// An instance of a [lapin::Consumer].
+    pub async fn new_consumer(
+        &self,
+        consumer_tag: &str,
+        queue_name: &str,
+    ) -> lapin::Result<Consumer> {
+        // Checks if the channel exists
+        let channel = self
+            .channel
+            .as_ref()
+            .ok_or(lapin::ErrorKind::InvalidChannelState(ChannelState::Closed, "publish"))?;
+
+        let consumer = channel
+            .basic_consume(
+                queue_name.into(),
+                consumer_tag.into(),
+                BasicConsumeOptions::default(),
+                FieldTable::default(),
+            )
+            .await?;
+
+        Ok(consumer)
+    }
 }

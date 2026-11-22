@@ -1,6 +1,6 @@
 # AutoStrike — Stack technique & Architecture
 
-> Document vivant : à mettre à jour à chaque évolution de l'architecture (nouveau composant, changement de techno, nouvelle décision structurante). Dernière mise à jour : **12 novembre 2026**.
+> Document vivant : à mettre à jour à chaque évolution de l'architecture (nouveau composant, changement de techno, nouvelle décision structurante). Dernière mise à jour : **22 novembre 2026**.
 
 ## 1. Stack technique
 
@@ -21,6 +21,8 @@
 *Le Back-end est passé de NestJS/TypeScript à Spring Boot/Java (cf. décision ADR-002 ci-dessous).*
 
 ## 2. Composants et rôles
+
+Dans le repo, tout ce qui sert l'interface web est regroupé sous `Dashboard/` : `Dashboard/Frontend` (Next.js), `Dashboard/Backend` (Spring Boot) et `Dashboard/Database` (PostgreSQL local et notes de schéma). L'orchestration reste sous `Server/` (Rust), le broker sous `Broker/`.
 
 - **Dashboard** — interface web pour lancer des campagnes de test et consulter les résultats.
 - **Back-end** — seul composant à parler directement à PostgreSQL pour les utilisateurs et les campagnes (pas les tâches) ; expose REST (auth, création/lancement de campagnes) et WebSocket (statuts en direct vers le Dashboard).
@@ -65,7 +67,7 @@ Chaque queue est durable et propre à son service : si un service redémarre, se
 ## 6. Points d'attention sur l'architecture RabbitMQ (à traiter)
 
 - **Producteur manquant pour `campaign.updated`** — `backend_notifications` y est abonné, mais aucun composant ne le publie actuellement. Task Manager doit publier `campaign.updated` quand le statut global d'une campagne change.
-- **Type d'exchange non précisé** — un exchange direct suffit vu qu'il n'y a pas de besoin de wildcard ; un topic exchange (`task.#`) peut être envisagé si des sous-types d'événements apparaissent plus tard.
+- ~~**Type d'exchange non précisé**~~ — tranché par le code : un exchange **topic** durable `autostrike.events`, déclaré à l'identique par le serveur Rust (`Server/common/src/event`) et le Back-end. Tout service qui le déclare doit garder ces options, sinon RabbitMQ refuse la déclaration (`PRECONDITION_FAILED`).
 - **Durabilité = une question de configuration, pas de choix de techno** — sans queues `durable:true`, messages `persistent` (delivery_mode=2) et ack manuel après écriture en base, RabbitMQ perd des messages exactement comme Redis Pub/Sub.
 - **Pas de dead-letter queue définie** — sans DLX + limite de retry, risque de boucle infinie ou de perte silencieuse selon la config de requeue.
 - **Idempotence et ordre non traités** — RabbitMQ est at-least-once (doublons possibles) et ne garantit pas l'ordre entre queues différentes.

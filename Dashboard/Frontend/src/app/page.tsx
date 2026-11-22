@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -11,8 +9,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { LaunchScenarioForm } from "@/components/launch-scenario-form";
 import { useBackendSocket } from "@/hooks/use-backend-socket";
-import type { ScenarioStatus } from "@/lib/types";
+import { useScenarioTemplates } from "@/hooks/use-scenario-templates";
+import type { ScenarioResult, ScenarioStatus } from "@/lib/types";
 
 const STATUS_LABEL: Record<ScenarioStatus, string> = {
   CREATED: "Créé",
@@ -51,16 +51,19 @@ function ConnectionBadge({
   return <Badge variant={variant}>{label}</Badge>;
 }
 
+/** Ex. « 3 hôtes, dont 1 en production ». */
+function describeTargets({ targets }: ScenarioResult): string {
+  const production = targets.filter((t) => t.criticality === "PRODUCTION");
+  const hosts = targets.length === 1 ? "1 hôte" : `${targets.length} hôtes`;
+  return production.length === 0
+    ? hosts
+    : `${hosts}, dont ${production.length} en production`;
+}
+
 export default function Home() {
   const { scenarios, status, launchScenario, launchError } =
     useBackendSocket();
-  const [launching, setLaunching] = useState(false);
-
-  async function handleLaunch() {
-    setLaunching(true);
-    await launchScenario(`Scénario ${new Date().toLocaleString("fr-FR")}`);
-    setLaunching(false);
-  }
+  const templates = useScenarioTemplates();
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
@@ -69,19 +72,19 @@ export default function Home() {
         <ConnectionBadge status={status} />
       </div>
 
-      <div className="flex items-center gap-3">
-        <Button onClick={handleLaunch} disabled={launching}>
-          {launching ? "Lancement…" : "Lancer un scénario"}
-        </Button>
-        {launchError && (
-          <p className="text-sm text-destructive">{launchError}</p>
-        )}
-      </div>
+      <LaunchScenarioForm
+        templates={templates.templates}
+        templatesLoading={templates.loading}
+        templatesError={templates.error}
+        launchError={launchError}
+        onLaunch={launchScenario}
+      />
 
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Nom</TableHead>
+            <TableHead>Cibles</TableHead>
             <TableHead>Statut</TableHead>
             <TableHead>Mis à jour</TableHead>
           </TableRow>
@@ -89,7 +92,7 @@ export default function Home() {
         <TableBody>
           {scenarios.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={3} className="text-center text-muted-foreground">
+              <TableCell colSpan={4} className="text-center text-muted-foreground">
                 Aucun scénario pour le moment.
               </TableCell>
             </TableRow>
@@ -97,6 +100,7 @@ export default function Home() {
             scenarios.map((scenario) => (
               <TableRow key={scenario.id}>
                 <TableCell>{scenario.name}</TableCell>
+                <TableCell>{describeTargets(scenario)}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_VARIANT[scenario.status]}>
                     {STATUS_LABEL[scenario.status]}

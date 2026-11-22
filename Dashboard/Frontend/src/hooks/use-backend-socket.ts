@@ -1,14 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { API_URL, WS_URL } from "@/lib/config";
 import type {
   BackendSocketEvent,
   ConnectionStatus,
+  LaunchScenarioRequest,
   ScenarioResult,
 } from "@/lib/types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:3001";
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000, 15000];
 
@@ -114,25 +113,41 @@ export function useBackendSocket() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ne doit tourner qu'au montage
   }, []);
 
-  const launchScenario = useCallback(async (name: string) => {
-    setLaunchError(null);
-    try {
-      const res = await fetch(`${API_URL}/scenarios`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const created: ScenarioResult = await res.json();
-      upsertScenario(created);
-    } catch (err) {
-      setLaunchError(
-        err instanceof Error
-          ? err.message
-          : "Impossible de contacter le back-end",
-      );
-    }
-  }, [upsertScenario]);
+  /** Lance un scénario ; renvoie `true` si le Back-end l'a accepté. */
+  const launchScenario = useCallback(
+    async (request: LaunchScenarioRequest) => {
+      setLaunchError(null);
+      let res: Response;
+      try {
+        res = await fetch(`${API_URL}/scenarios`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+        });
+      } catch {
+        setLaunchError("Impossible de contacter le back-end.");
+        return false;
+      }
+      if (!res.ok) {
+        setLaunchError(launchErrorMessage(res.status));
+        return false;
+      }
+      upsertScenario((await res.json()) as ScenarioResult);
+      return true;
+    },
+    [upsertScenario],
+  );
 
   return { scenarios, status, launchScenario, launchError };
+}
+
+function launchErrorMessage(status: number): string {
+  switch (status) {
+    case 400:
+      return "Requête refusée : vérifiez le modèle et les hôtes cibles.";
+    case 503:
+      return "Le message broker est injoignable : le scénario est enregistré en échec.";
+    default:
+      return `Erreur du back-end (HTTP ${status}).`;
+  }
 }
